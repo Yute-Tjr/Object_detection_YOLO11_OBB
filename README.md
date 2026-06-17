@@ -64,8 +64,9 @@ python3 scripts/predict_yolo11_obb.py \
 Ultralytics YOLO11 supports OBB models such as `yolo11n-obb.pt`,
 `yolo11s-obb.pt`, `yolo11m-obb.pt`, `yolo11l-obb.pt`, and `yolo11x-obb.pt`.
 
-## 8. 新 AnyLabeling OBB 数据集
+## 8. AnyLabeling OBB 数据集
 
+主要修改标注框的精确度 \
 新标注转换后的完整 OBB 目录：
 
 ```text
@@ -118,6 +119,20 @@ python3 scripts/evaluate_yolo11_obb.py \
   --split test \
   --name yolo11n_154843_converted_label1_6_test_eval
 ```
+
+评估脚本会在本次 evaluate 输出目录中额外写入：
+
+```text
+custom_metrics.csv
+```
+
+该文件只包含当前关注的指标：
+
+```text
+class,precision,recall,mAP50,mAP80,mAP85,mAP90,mAP95
+```
+
+`custom_metrics.csv` 不输出 `mAP50-95`；如需查看 Ultralytics 原始默认指标，仍可查看 evaluate 命令自身打印和生成的默认结果文件。
 
 ## 9. 训练日志
 

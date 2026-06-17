@@ -14,6 +14,7 @@ from yolo11_obb.config import (
     resolve_from_root,
     validate_dataset_layout,
 )
+from yolo11_obb.eval_metrics import default_custom_metrics_path, write_custom_metrics_csv
 from yolo11_obb.runner import evaluate
 
 
@@ -56,7 +57,10 @@ def main() -> None:
         project=args.project,
         name=args.name,
     )
-    evaluate(options)
+    result = evaluate(options)
+    metrics_path = default_custom_metrics_path(result, options.project / options.name)
+    write_custom_metrics_csv(result, metrics_path)
+    print(f"custom metrics: {metrics_path}")
 
 
 if __name__ == "__main__":
