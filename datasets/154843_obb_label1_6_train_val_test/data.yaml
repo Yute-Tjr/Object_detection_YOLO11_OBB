@@ -1,4 +1,4 @@
-path: /Users/tongjiarui/Documents/目标检测/datasets/154843_obb_label1_6_train_val_test
+path: datasets/154843_obb_label1_6_train_val_test
 train: images/train
 val: images/val
 test: images/test

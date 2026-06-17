@@ -146,6 +146,21 @@ def _resolve_split(root: Path, value: object) -> Path:
     return split_path if split_path.is_absolute() else root / split_path
 
 
+def _resolve_dataset_root(yaml_path: Path, root_value: str) -> Path:
+    root = Path(root_value).expanduser()
+    if root.is_absolute():
+        return root.resolve()
+
+    candidates = [yaml_path.parent / root]
+    candidates.extend(parent / root for parent in yaml_path.parents)
+    candidates.append(Path.cwd() / root)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[0].resolve()
+
+
 def resolve_from_root(path: Union[str, Path], root: Union[str, Path]) -> Path:
     """
     把相对路径固定解析到项目根目录。防止出现嵌套
@@ -174,10 +189,7 @@ def load_dataset_config(data_yaml: Union[str, Path]) -> DatasetConfig:
     if not isinstance(root_value, str):
         raise ValueError(f"`path` in {yaml_path} must be a string")
 
-    root = Path(root_value).expanduser()
-    if not root.is_absolute():
-        root = yaml_path.parent / root
-    root = root.resolve()
+    root = _resolve_dataset_root(yaml_path, root_value)
 
     splits = {
         "train": _resolve_split(root, raw.get("train")),

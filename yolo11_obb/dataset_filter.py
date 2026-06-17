@@ -50,9 +50,15 @@ def _filter_label_file(
     return {"total": total, "kept": len(kept), "removed": removed}
 
 
+def _portable_dataset_path(output: Path) -> str:
+    if output.parent.name == "datasets":
+        return f"datasets/{output.name}"
+    return "."
+
+
 def _write_data_yaml(output: Path, names: Mapping[int, str]) -> None:
     lines = [
-        "path: .",
+        f"path: {_portable_dataset_path(output)}",
         "train: images/train",
         "val: images/val",
         "test: images/test",

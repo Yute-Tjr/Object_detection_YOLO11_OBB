@@ -75,6 +75,30 @@ class DatasetSplitterTests(unittest.TestCase):
 
             self.assertTrue(all(len(splits) == 1 for splits in split_by_group.values()))
 
+    def test_create_train_test_dataset_writes_project_relative_path_under_datasets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            output = root / "project" / "datasets" / "sample_train_test"
+            stem = "CropImage_20260101000000000_F3-I0_NG-1"
+            write_file(source / f"{stem}.bmp")
+            write_text(source / f"{stem}.txt", "0 0 0 1 0 1 1 0 1\n")
+            write_file(source / "CropImage_20260101000000001_F3-I0_NG-1.bmp")
+            write_text(source / "CropImage_20260101000000001_F3-I0_NG-1.txt", "0 0 0 1 0 1 1 0 1\n")
+
+            create_train_test_dataset(
+                source=source,
+                output=output,
+                train_ratio=0.5,
+                keep_classes={0},
+                names={0: "label1"},
+            )
+
+            self.assertIn(
+                "path: datasets/sample_train_test",
+                (output / "data.yaml").read_text(encoding="utf-8"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

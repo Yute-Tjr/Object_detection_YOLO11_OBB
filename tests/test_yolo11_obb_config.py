@@ -46,6 +46,32 @@ class DatasetConfigTests(unittest.TestCase):
             self.assertEqual(config.splits["test"], resolved_root / "images" / "test")
             self.assertEqual(config.names, {0: "label1", 1: "label2"})
 
+    def test_load_dataset_config_resolves_project_relative_dataset_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            dataset_root = project / "datasets" / "sample"
+            data_yaml = dataset_root / "data.yaml"
+            write_file(
+                data_yaml,
+                "\n".join(
+                    [
+                        "path: datasets/sample",
+                        "train: images/train",
+                        "val: images/test",
+                        "test: images/test",
+                        "names:",
+                        "  0: label1",
+                    ]
+                )
+                + "\n",
+            )
+
+            config = load_dataset_config(data_yaml)
+
+            self.assertEqual(config.root, dataset_root.resolve())
+            self.assertEqual(config.splits["train"], dataset_root.resolve() / "images" / "train")
+            self.assertEqual(config.splits["val"], dataset_root.resolve() / "images" / "test")
+
     def test_validate_dataset_layout_requires_matching_images_and_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

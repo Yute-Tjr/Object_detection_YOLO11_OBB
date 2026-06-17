@@ -50,6 +50,28 @@ class DatasetFilterTests(unittest.TestCase):
             self.assertIn("  5: label6", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertNotIn("  6:", (output / "data.yaml").read_text(encoding="utf-8"))
 
+    def test_create_label_subset_dataset_writes_project_relative_path_under_datasets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source"
+            output = root / "project" / "datasets" / "sample_label_subset"
+
+            for split in ("train", "val", "test"):
+                write_file(source / "images" / split / "sample.bmp")
+                write_file(source / "labels" / split / "sample.txt", "0 0 0 1 0 1 1 0 1\n")
+
+            create_label_subset_dataset(
+                source=source,
+                output=output,
+                keep_classes={0},
+                names={0: "label1"},
+            )
+
+            self.assertIn(
+                "path: datasets/sample_label_subset",
+                (output / "data.yaml").read_text(encoding="utf-8"),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
