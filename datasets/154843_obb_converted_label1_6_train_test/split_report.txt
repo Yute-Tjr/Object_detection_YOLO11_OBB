@@ -1,0 +1,14 @@
+source: /Users/tongjiarui/Documents/目标检测/已打标的数据202604/user1_2026-03-16_154843_obb_converted
+output: /Users/tongjiarui/Documents/目标检测/datasets/154843_obb_converted_label1_6_train_test
+seed: 42
+train_ratio: 0.8
+keep_classes: [0, 1, 2, 3, 4, 5]
+names:
+  0: label1
+  1: label2
+  2: label3
+  3: label4
+  4: label5
+  5: label6
+train: {'groups': 54, 'images': 342, 'labels': 342, 'total_objects': 1900, 'kept_objects': 1884, 'removed_objects': 16, 'empty_labels': 13}
+test: {'groups': 14, 'images': 87, 'labels': 87, 'total_objects': 482, 'kept_objects': 478, 'removed_objects': 4, 'empty_labels': 4}
