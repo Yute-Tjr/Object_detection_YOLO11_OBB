@@ -50,7 +50,7 @@ def _filter_label_file(
 
 def _write_data_yaml(output: Path, names: Mapping[int, str]) -> None:
     lines = [
-        f"path: {output.resolve()}",
+        "path: .",
         "train: images/train",
         "val: images/test",
         "test: images/test",

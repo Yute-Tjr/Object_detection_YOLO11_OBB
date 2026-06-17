@@ -46,6 +46,7 @@ class DatasetFilterTests(unittest.TestCase):
                 (output / "labels" / "train" / "sample.txt").read_text(encoding="utf-8"),
                 "0 0 0 1 0 1 1 0 1\n5 0 0 1 0 1 1 0 1\n",
             )
+            self.assertIn("path: .", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertIn("  5: label6", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertNotIn("  6:", (output / "data.yaml").read_text(encoding="utf-8"))
 

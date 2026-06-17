@@ -59,6 +59,7 @@ class DatasetSplitterTests(unittest.TestCase):
             self.assertEqual(report["train"]["removed_objects"] + report["test"]["removed_objects"], 16)
             self.assertFalse((output / "images" / "val").exists())
             self.assertFalse((output / "labels" / "val").exists())
+            self.assertIn("path: .", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertIn("val: images/test", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertIn("  5: label6", (output / "data.yaml").read_text(encoding="utf-8"))
             self.assertNotIn("  6:", (output / "data.yaml").read_text(encoding="utf-8"))
