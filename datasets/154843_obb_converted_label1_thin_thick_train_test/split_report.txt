@@ -1,0 +1,15 @@
+source: /Users/tongjiarui/Documents/目标检测/已打标的数据202604/user1_2026-03-16_154843_obb_converted
+output: /Users/tongjiarui/Documents/目标检测/datasets/154843_obb_converted_label1_thin_thick_train_test
+seed: 42
+train_ratio: 0.8
+top_edge_threshold_px: 164.0
+names:
+  0: label1_thin
+  1: label1_thick
+  2: label2
+  3: label3
+  4: label4
+  5: label5
+  6: label6
+train: {'groups': 54, 'images': 342, 'labels': 342, 'total_objects': 1900, 'kept_objects': 1884, 'removed_objects': 16, 'empty_labels': 13, 'class_counts': {0: 209, 1: 120, 2: 311, 3: 311, 4: 311, 5: 311, 6: 311}}
+test: {'groups': 14, 'images': 87, 'labels': 87, 'total_objects': 482, 'kept_objects': 478, 'removed_objects': 4, 'empty_labels': 4, 'class_counts': {0: 54, 1: 29, 2: 79, 3: 79, 4: 79, 5: 79, 6: 79}}

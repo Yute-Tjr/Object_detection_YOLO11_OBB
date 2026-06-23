@@ -33,3 +33,9 @@
 /yolo11_obb/__pycache__/runner.cpython-311.pyc
 /yolo11_obb/__pycache__/runner.cpython-313.pyc
 /yolo11_obb/__pycache__/runner.cpython-38.pyc
+/tests/__pycache__/test_label1_thin_thick_dataset.cpython-38.pyc
+/tests/__pycache__/test_obb_geometry.cpython-38.pyc
+/yolo11_obb/__pycache__/label1_thin_thick_dataset.cpython-311.pyc
+/yolo11_obb/__pycache__/label1_thin_thick_dataset.cpython-38.pyc
+/yolo11_obb/__pycache__/obb_geometry.cpython-311.pyc
+/yolo11_obb/__pycache__/obb_geometry.cpython-38.pyc
