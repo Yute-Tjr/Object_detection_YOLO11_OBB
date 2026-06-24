@@ -1,0 +1,11 @@
+path: datasets/154843_after_20260121210219803_no_index1_label1_6_train_test
+train: images/train
+val: images/test
+test: images/test
+names:
+  0: label1
+  1: label2
+  2: label3
+  3: label4
+  4: label5
+  5: label6

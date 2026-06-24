@@ -353,28 +353,110 @@ matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay/match
 - 加权后的 `label1 mAP90` 从原始 `label1` baseline 的 `0.283031` 提升到 `0.430042`，说明重新截取数据源比继续调增强参数更接近根因。
 - `label3 mAP85/mAP90` 仍偏低，下一步需要结合本轮 `matches.csv` 看失败样本是否集中在少量角度或边界不一致样本。
 
-### 9.5 下一步调整
+### 9.5 yolo11l-obb 50 轮 after_20260121210219803 去除 -1 样本
+
+数据集：
+
+```text
+datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test
+```
+
+该数据集在 `after_20260121210219803` 子集基础上，额外去掉文件名末尾 index 为 `-1` 的样本。这样做的原因是部分 `-1` 样本在原 AnyLabeling JSON 中被写成 `label1`，但从图像语义看更接近已排除的 `other` 大框，会污染 `label1_thick`。
+
+```text
+selected json files: 251
+excluded json files: 22
+train: 198 images, 198 labels
+test:   53 images, 53 labels
+```
+
+类别分布：
+
+| split | objects | label1_thin | label1_thick | label2 | label3 | label4 | label5 | label6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 1188 | 132 | 66 | 198 | 198 | 198 | 198 | 198 |
+| test | 318 | 35 | 18 | 53 | 53 | 53 | 53 | 53 |
+
+配置：
+
+```text
+model: yolo11l-obb.pt
+epochs: 50
+imgsz: 1280
+batch: 8
+device: 0
+degrees: 0.0
+val: test
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
+| label1_thin | 1.000000 | 0.999041 | 0.995000 | 0.940558 | 0.649216 | 0.335726 | 0.014286 |
+| label1_thick | 0.980111 | 1.000000 | 0.995000 | 0.875694 | 0.775000 | 0.643462 | 0.000000 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.970283 | 0.816797 | 0.264728 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.983113 | 0.943141 | 0.586077 | 0.131533 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.967453 | 0.492787 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.966415 | 0.942822 | 0.674799 | 0.178752 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.983868 | 0.983868 | 0.953552 | 0.199700 |
+
+IoU85 可视化输出：
+
+```text
+images processed: 53
+overlays: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_thin_thick_e50_img1280_b8_deg0_valtest/all
+failed overlays: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_thin_thick_e50_img1280_b8_deg0_valtest/failed_iou85
+matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_thin_thick_e50_img1280_b8_deg0_valtest/matches.csv
+```
+
+与 `after212102` 未去除 `-1` 的结果相比：
+
+| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| after212102 b8 degrees0 | 0.999303 | 1.000000 | 0.995000 | 0.930040 | 0.841242 | 0.700215 | 0.216485 |
+| after212102 no-index1 b8 degrees0 | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
+| no-index1 - after212102 | -0.002144 | -0.000137 | +0.000000 | +0.032767 | +0.052948 | +0.010909 | -0.033373 |
+
+按 test 集数量加权合并 `label1_thin/thick` 后：
+
+| 实验 | weighted label1 mAP80 | weighted label1 mAP85 | weighted label1 mAP90 | weighted label1 mAP95 |
+| --- | ---: | ---: | ---: | ---: |
+| 原 label1 baseline | 0.792929 | 0.427479 | 0.283031 | 0.008705 |
+| thin/thick b4 degrees0 | 0.785306 | 0.490813 | 0.291867 | 0.031744 |
+| after212102 b8 degrees0 | 0.817247 | 0.568284 | 0.430042 | 0.027544 |
+| after212102 no-index1 b8 degrees0 | 0.918529 | 0.691935 | 0.440240 | 0.009434 |
+
+结论：
+
+- 去掉 `-1` 样本是有效的：整体 `mAP80/mAP85/mAP90` 分别提升到 `0.962807/0.894190/0.711124`，说明原先的 `-1` 大框确实在干扰定位。
+- `label1_thick` 明显受益，`mAP80/mAP85/mAP90` 从 `0.764306/0.509383/0.367969` 提升到 `0.875694/0.775000/0.643462`。
+- `label1_thin mAP90` 从 `0.469059` 降到 `0.335726`，说明拆分后 thin 类在高 IoU 阈值下仍不稳定；这可能来自样本少、边界定义细、或 thin/thick 分界规则不够贴合视觉语义。
+- 目前还不能直接断定“不需要区分 thin/thick”。同一 cleaned 数据集上还没有跑过未拆分 `label1` 的对照实验；如果最终业务不需要输出 thin/thick，下一步应在 no-index1 数据集上生成 `label1-label6` 版本并同配置训练对照。
+
+### 9.6 下一步调整
 
 优先级：
 
-1. 先下载本轮 `runs/analysis/iou85_overlay`，统计 `matches.csv` 的失败类别和角度分布。
-2. 如果失败集中在少量样本，优先复核标注边界，而不是继续调增强参数。
-3. 如果 `label3` 的失败仍与角度相关，再在该新子集上单独尝试 `degrees=3`，不要直接回到 `degrees=5`。
-4. 当前主线应切换到 `after_20260121210219803` 子集；完整数据集实验只作为归档对照。
+1. 先下载 no-index1 这轮 `runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_thin_thick_e50_img1280_b8_deg0_valtest`，统计 `matches.csv` 的失败类别和角度分布。
+2. 在同一个 no-index1 数据源上生成不拆分 `label1` 的 `label1-label6` 对照数据集，并用完全相同训练配置跑一轮，判断是否回到单一 `label1`。
+3. 如果不拆分 `label1` 后整体 `mAP85/mAP90` 不下降，且 `label1` 指标不低于加权后的 `0.691935/0.440240`，最终训练可以回到单一 `label1`。
+4. 如果不拆分后 `label1` 严格 IoU 变差，则继续保留 thin/thick，但需要复核 `label1_thin` 的边界一致性。
 
-建议下一轮只在新子集上做小角度单变量实验：
+建议优先做 no-index1 单一 `label1` 对照，而不是继续加大增强：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
   --model yolo11l-obb.pt \
-  --data datasets/154843_after_20260121210219803_label1_thin_thick_train_test/data.yaml \
+  --data datasets/154843_after_20260121210219803_no_index1_label1_6_train_test/data.yaml \
   --imgsz 1280 \
   --epochs 50 \
   --batch 8 \
   --device 0 \
   --workers 8 \
-  --name yolo11l_after212102_label1_thin_thick_e50_img1280_b8_deg3_valtest \
-  --degrees 3.0
+  --name yolo11l_after212102_no_index1_label1_6_e50_img1280_b8_deg0_valtest \
+  --degrees 0.0
 ```
 
 ## 10. 训练日志归档
