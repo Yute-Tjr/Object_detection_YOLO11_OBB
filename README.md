@@ -3,13 +3,13 @@
 ## 1. 项目数据集:
 
 ```text
-datasets/154843_obb_converted_label1_6_train_test
+datasets/154843_obb_converted_label1_thin_thick_train_test
 ```
 
 ## 2. 数据集配置:
 
 ```text
-datasets/154843_obb_converted_label1_6_train_test/data.yaml
+datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml
 ```
 
 ## 3. 依赖下载
@@ -24,8 +24,7 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 scripts/train_yolo11_obb.py \
-  --data datasets/154843_obb_converted_label1_6_train_test/data.yaml \
-  --no-val \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
   --dry-run
 ```
 
@@ -33,21 +32,21 @@ python3 scripts/train_yolo11_obb.py \
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
-  --model yolo11m-obb.pt \
-  --data datasets/154843_obb_converted_label1_6_train_test/data.yaml \
-  --imgsz 1024 \
-  --epochs 30 \
-  --batch 16 \
+  --model yolo11l-obb.pt \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --imgsz 1280 \
+  --epochs 50 \
+  --batch 8 \
   --device 0 \
   --workers 8 \
-  --name yolo11m_154843_converted_label1_6_e30_train_test \
-  --no-val
+  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest \
+  --degrees 5.0
 ```
 
-当前 30 轮实验权重
+当前 50 轮实验权重
 
 ```text
-runs/obb/yolo11m_154843_converted_label1_6_e30_train_test/weights/best.pt
+runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt
 ```
 
 ## 6. Evaluate
@@ -56,21 +55,21 @@ runs/obb/yolo11m_154843_converted_label1_6_e30_train_test/weights/best.pt
 
 ```bash
 python3 scripts/evaluate_yolo11_obb.py \
-  --data datasets/154843_obb_converted_label1_6_train_test/data.yaml \
-  --model runs/obb/yolo11m_154843_converted_label1_6_e30_train_test/weights/best.pt \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --model runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt \
   --split test \
-  --imgsz 1024 \
-  --batch 16 \
+  --imgsz 1280 \
+  --batch 8 \
   --device 0 \
-  --name yolo11m_154843_converted_label1_6_e30_test_eval
+  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest_eval
 ```
 
 ## 7. Predict
 
 ```bash
 python3 scripts/predict_yolo11_obb.py \
-  --model runs/obb/yolo11m_154843_converted_label1_6_e30_train_test/weights/best.pt \
-  --source datasets/154843_obb_converted_label1_6_train_test/images/test
+  --model runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt \
+  --source datasets/154843_obb_converted_label1_thin_thick_train_test/images/test
 ```
 
 Ultralytics YOLO11 supports OBB models such as `yolo11n-obb.pt`,
@@ -78,33 +77,51 @@ Ultralytics YOLO11 supports OBB models such as `yolo11n-obb.pt`,
 
 ## 8. AnyLabeling OBB 数据集
 
-主要修改标注框的精确度 \
-新标注转换后的完整 OBB 目录：
+主要修改标注框的精确度。新标注转换后的完整 OBB 目录：
 
 ```text
 已打标的数据202604/user1_2026-03-16_154843_obb_converted
 ```
 
-按母样本分组后，只保留 `label1-label6`，并按 `train:test = 8:2` 生成的数据集：
+当前主数据集把原 `label1` 按标注框上沿宽度拆成两类：
+
+- `label1_thin`: 原 `label1` 上沿宽度 `< 164 px`
+- `label1_thick`: 原 `label1` 上沿宽度 `>= 164 px`
+
+其余类别从原 `label2-label6` 顺延为当前 `label2-label6`。原 `other` 类仍然过滤，不参与训练和评估。
+
+当前主数据集：
 
 ```text
-datasets/154843_obb_converted_label1_6_train_test
+datasets/154843_obb_converted_label1_thin_thick_train_test
 ```
 
-该数据集没有单独的 `images/val` 和 `labels/val` 目录。`data.yaml` 中的 `val` 指向 `images/test`，只用于兼容 Ultralytics 数据配置；训练时使用 `--no-val` 关闭训练期间验证，训练结束后再单独对 `test` 做 evaluate。
+该数据集没有单独的 `images/val` 和 `labels/val` 目录。`data.yaml` 中的 `val` 指向 `images/test`，训练和 evaluate 都使用 `test` 作为验证/测试集。
+
+```text
+train: 342 images, 342 labels
+test:   87 images, 87 labels
+```
+
+类别分布：
+
+| split | objects | label1_thin | label1_thick | label2 | label3 | label4 | label5 | label6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 1884 | 209 | 120 | 311 | 311 | 311 | 311 | 311 |
+| test | 478 | 54 | 29 | 79 | 79 | 79 | 79 | 79 |
 
 重新生成数据集：
 
 ```bash
-python3 scripts/create_train_test_dataset.py
+python3 scripts/create_label1_thin_thick_dataset.py \
+  --top-edge-threshold-px 164
 ```
 
 检查数据：
 
 ```bash
 python3 scripts/train_yolo11_obb.py \
-  --data datasets/154843_obb_converted_label1_6_train_test/data.yaml \
-  --no-val \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
   --dry-run
 ```
 
@@ -122,67 +139,11 @@ class,precision,recall,mAP50,mAP80,mAP85,mAP90,mAP95
 
 `custom_metrics.csv` 不输出 `mAP50-95`。
 
-## 9. AnyLabeling 数据集训练日志
+## 9. label1_thin/thick 训练日志
 
-当前日志基于新的 AnyLabeling OBB 数据集，只保留 `label1-label6`，按 `train:test = 8:2` 划分。
+当前日志基于 `datasets/154843_obb_converted_label1_thin_thick_train_test`。重点指标仍是 `mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。
 
-```text
-datasets/154843_obb_converted_label1_6_train_test
-```
-
-该数据集没有单独划分 `val`。为了满足 Ultralytics 的数据配置字段，`data.yaml` 中的 `val` 指向 `images/test`；正式指标以训练结束后单独执行的 `test evaluate` 为准。
-
-```text
-train: 342 images, 342 labels
-test:   87 images, 87 labels
-```
-
-当前重点关注指标：`mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。不再把 `mAP50-95` 作为主要对比指标。
-
-### 9.1 yolo11m-obb 30 轮训练
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.999066 | 0.997992 | 0.994961 | 0.938099 | 0.866518 | 0.690608 | 0.204737 |
-| label1 | 0.998217 | 0.987952 | 0.994765 | 0.753901 | 0.500505 | 0.261939 | 0.009079 |
-| label2 | 0.997938 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.891359 | 0.309233 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.983734 | 0.954011 | 0.579002 | 0.175633 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.980190 | 0.944519 | 0.365026 |
-| label5 | 0.998243 | 1.000000 | 0.995000 | 0.905957 | 0.788579 | 0.561387 | 0.167898 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.980823 | 0.905445 | 0.201553 |
-
-### 9.2 yolo11m-obb 60 轮训练
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.995575 | 1.000000 | 0.994821 | 0.941476 | 0.858661 | 0.678999 | 0.228278 |
-| label1 | 0.985392 | 1.000000 | 0.993929 | 0.780943 | 0.422103 | 0.169866 | 0.007727 |
-| label2 | 0.995776 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.895415 | 0.279622 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.979430 | 0.968413 | 0.593519 | 0.206165 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.933481 | 0.538481 |
-| label5 | 0.996449 | 1.000000 | 0.995000 | 0.903485 | 0.786451 | 0.582529 | 0.082702 |
-| label6 | 0.995835 | 1.000000 | 0.995000 | 0.995000 | 0.985000 | 0.899187 | 0.254968 |
-
-### 9.3 30 轮与 60 轮对比
-
-| 轮数 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 30 | 0.999066 | 0.997992 | 0.994961 | 0.938099 | 0.866518 | 0.690608 | 0.204737 |
-| 60 | 0.995575 | 1.000000 | 0.994821 | 0.941476 | 0.858661 | 0.678999 | 0.228278 |
-| 60-30 | -0.003491 | +0.002008 | -0.000140 | +0.003377 | -0.007857 | -0.011609 | +0.023541 |
-
-结论：
-
-- `mAP50` 基本持平，30 轮略高。
-- 60 轮的 `mAP80` 和 `mAP95` 有小幅提升，但 `mAP85`、`mAP90` 下降。
-- `label1` 在严格 IoU 指标下仍是主要短板，60 轮的 `label1 mAP85/mAP90/mAP95` 没有改善。
-- 当前结果不支持继续单纯增加 epoch。下一步更应该检查 `label1` 的预测图、标注框一致性，或者单独尝试更高输入分辨率。
-
-### 9.4 yolo11l-obb 50 轮训练
+### 9.1 yolo11l-obb 50 轮 imgsz=1280 baseline
 
 配置：
 
@@ -190,276 +151,9 @@ test:   87 images, 87 labels
 model: yolo11l-obb.pt
 epochs: 50
 imgsz: 1280
-batch: 8
-device: 0,1
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996308 | 0.998146 | 0.994980 | 0.948818 | 0.861267 | 0.691664 | 0.199641 |
-| label1 | 0.987963 | 0.988878 | 0.994881 | 0.792929 | 0.427479 | 0.283031 | 0.008705 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.978924 | 0.902174 | 0.302373 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.936519 | 0.632758 | 0.130752 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.956430 | 0.376918 |
-| label5 | 0.989888 | 1.000000 | 0.995000 | 0.919980 | 0.834682 | 0.553017 | 0.142550 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.822573 | 0.236546 |
-
-### 9.5 yolo11l-obb 50 轮弱增强训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1280
-batch: 8
-device: 0,1
-augmentation: weakaug
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.997233 | 0.998159 | 0.993512 | 0.942275 | 0.855466 | 0.655579 | 0.185220 |
-| label1 | 0.987964 | 0.988955 | 0.986071 | 0.740928 | 0.505643 | 0.213588 | 0.018939 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.978418 | 0.893821 | 0.193008 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.892354 | 0.565441 | 0.088290 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.911360 | 0.442561 |
-| label5 | 0.997536 | 1.000000 | 0.995000 | 0.932722 | 0.766379 | 0.512238 | 0.090590 |
-| label6 | 0.997897 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.837025 | 0.277929 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| weakaug - noaug | +0.000925 | +0.000013 | -0.001468 | -0.006543 | -0.005801 | -0.036085 | -0.014421 |
-| label1 weakaug - noaug | +0.000001 | +0.000077 | -0.008810 | -0.052001 | +0.078164 | -0.069443 | +0.010234 |
-
-结论：该弱增强配置不适合作为默认训练策略。`label1 mAP85/mAP95` 有改善，但 `label1 mAP80/mAP90` 和整体 `mAP90/mAP95` 明显下降，说明增强扰动损害了高 IoU 定位稳定性。
-
-### 9.6 yolo11l-obb 50 轮 close_mosaic=20 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1280
-batch: 8
-device: 0,1
-close_mosaic: 20
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996842 | 0.996699 | 0.994922 | 0.953682 | 0.889249 | 0.656411 | 0.180590 |
-| label1 | 0.987857 | 0.980192 | 0.994531 | 0.815452 | 0.574197 | 0.214337 | 0.027861 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.984494 | 0.907801 | 0.284357 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.940542 | 0.520637 | 0.097120 |
-| label4 | 0.996267 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.884528 | 0.396661 |
-| label5 | 1.000000 | 1.000000 | 0.995000 | 0.926642 | 0.857024 | 0.532917 | 0.097593 |
-| label6 | 0.996927 | 1.000000 | 0.995000 | 0.995000 | 0.984241 | 0.878244 | 0.179948 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| close_mosaic20 - noaug | +0.000534 | -0.001447 | -0.000058 | +0.004864 | +0.027982 | -0.035253 | -0.019051 |
-| label1 close_mosaic20 - noaug | -0.000106 | -0.008686 | -0.000350 | +0.022523 | +0.146718 | -0.068694 | +0.019156 |
-
-结论：`close_mosaic=20` 对 `label1 mAP80/mAP85/mAP95` 有明显帮助，是当前最值得继续沿着单变量方向探索的参数；但整体 `mAP90/mAP95` 下降，主要受 `label3/label4/label5/label6` 高 IoU 波动影响。
-
-### 9.7 yolo11l-obb 50 轮 close_mosaic=15 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1280
-batch: 8
-device: 0,1
-close_mosaic: 15
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996023 | 1.000000 | 0.994922 | 0.941815 | 0.882227 | 0.671463 | 0.194476 |
-| label1 | 0.976136 | 1.000000 | 0.994529 | 0.764670 | 0.560093 | 0.180706 | 0.008724 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.930264 | 0.368102 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.934241 | 0.587418 | 0.127436 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.917607 | 0.356159 |
-| label5 | 1.000000 | 1.000000 | 0.995000 | 0.906222 | 0.814026 | 0.540629 | 0.073056 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.872157 | 0.233381 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| close_mosaic15 - noaug | -0.000285 | +0.001854 | -0.000058 | -0.007003 | +0.020960 | -0.020201 | -0.005165 |
-| label1 close_mosaic15 - noaug | -0.011827 | +0.011122 | -0.000352 | -0.028259 | +0.132614 | -0.102325 | +0.000019 |
-
-结论：`close_mosaic=15` 比 `close_mosaic=20` 对整体 `mAP90/mAP95` 的损伤更小，但 `label1 mAP80/mAP90/mAP95` 不如 `close_mosaic=20`。该结果支持继续保留 `close_mosaic` 作为可调参数，但不能单独解决 `label1` 的严格 IoU 问题。
-
-### 9.8 yolo11l-obb 50 轮 mosaic=0.5 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1280
-batch: 8
+batch: 4
 device: 0
-mosaic: 0.5
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.997159 | 1.000000 | 0.994980 | 0.944234 | 0.874751 | 0.659501 | 0.234756 |
-| label1 | 0.987444 | 1.000000 | 0.994881 | 0.783148 | 0.550988 | 0.221245 | 0.015200 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.880310 | 0.380674 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.979557 | 0.906087 | 0.575250 | 0.188731 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.924231 | 0.472163 |
-| label5 | 0.995507 | 1.000000 | 0.995000 | 0.917697 | 0.806430 | 0.523758 | 0.119126 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.832209 | 0.232643 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| mosaic0.5 - noaug | +0.000851 | +0.001854 | +0.000000 | -0.004584 | +0.013484 | -0.032163 | +0.035115 |
-| label1 mosaic0.5 - noaug | -0.000519 | +0.011122 | +0.000000 | -0.009781 | +0.123509 | -0.061786 | +0.006495 |
-
-结论：`mosaic=0.5` 是目前唯一提升整体 `mAP95` 的 yolo11l 实验，但同时降低了整体 `mAP80/mAP90` 和 `label1 mAP90`。这说明降低 mosaic 强度可能改善极严格 IoU 下的部分框贴合，但仍没有解决 `label1` 在 `mAP90` 附近的定位稳定性问题。
-
-### 9.9 yolo11l-obb 50 轮 scale=0.25 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1280
-batch: 8
-device: 0
-scale: 0.25
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.999532 | 0.997752 | 0.994980 | 0.944884 | 0.894216 | 0.695846 | 0.171876 |
-| label1 | 1.000000 | 0.986513 | 0.994881 | 0.794359 | 0.614440 | 0.228891 | 0.002951 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.904231 | 0.227743 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.978797 | 0.958544 | 0.567975 | 0.070443 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.974747 | 0.959677 | 0.362049 |
-| label5 | 0.999543 | 1.000000 | 0.995000 | 0.922036 | 0.838452 | 0.627612 | 0.121173 |
-| label6 | 0.997648 | 1.000000 | 0.995000 | 0.984114 | 0.984114 | 0.886693 | 0.246899 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| scale0.25 - noaug | +0.003224 | -0.000394 | +0.000000 | -0.003934 | +0.032949 | +0.004182 | -0.027765 |
-| label1 scale0.25 - noaug | +0.012037 | -0.002365 | +0.000000 | +0.001430 | +0.186961 | -0.054140 | -0.005754 |
-
-结论：`scale=0.25` 提升了整体 `mAP85/mAP90`，但降低了整体 `mAP95`，并且 `label1 mAP90/mAP95` 继续下降。至此，增强参数对 `label1` 严格 IoU 的收益不稳定，下一阶段优先回到 baseline 并提升输入分辨率。
-
-### 9.10 yolo11l-obb 50 轮 imgsz=1536 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1536
-batch: 8
-device: 0
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996121 | 0.997992 | 0.994942 | 0.960323 | 0.899690 | 0.674921 | 0.201251 |
-| label1 | 0.991140 | 0.987952 | 0.994651 | 0.843877 | 0.599700 | 0.213928 | 0.029331 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.909972 | 0.312481 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.984114 | 0.967002 | 0.622488 | 0.162288 |
-| label4 | 0.995619 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.924494 | 0.368536 |
-| label5 | 0.995174 | 1.000000 | 0.995000 | 0.948948 | 0.882775 | 0.519593 | 0.127072 |
-| label6 | 0.994795 | 1.000000 | 0.995000 | 0.995000 | 0.958659 | 0.859052 | 0.207798 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| img1536 - img1280 | -0.000187 | -0.000154 | -0.000038 | +0.011505 | +0.038423 | -0.016743 | +0.001610 |
-| label1 img1536 - img1280 | +0.003177 | -0.000926 | -0.000230 | +0.050948 | +0.172221 | -0.069103 | +0.020626 |
-
-结论：`imgsz=1536` 是当前整体 `mAP80/mAP85` 最好的 yolo11l 配置，也显著提升了 `label1 mAP80/mAP85/mAP95`；但整体和 `label1` 的 `mAP90` 都低于 `imgsz=1280` baseline。继续提高分辨率可以作为一个方向，但它目前更像是在改善中高 IoU 和部分极严格框贴合，而不是稳定提升 `mAP90`。
-
-### 9.11 yolo11l-obb 50 轮 imgsz=1792 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1792
-batch: 2
-device: 0
-```
-
-`custom_metrics.csv` 结果：
-
-| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996111 | 0.997992 | 0.994961 | 0.945851 | 0.881275 | 0.669664 | 0.219339 |
-| label1 | 0.990740 | 0.987952 | 0.994765 | 0.748880 | 0.514551 | 0.175450 | 0.007205 |
-| label2 | 0.992937 | 1.000000 | 0.995000 | 0.995000 | 0.982848 | 0.902404 | 0.307159 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.981835 | 0.960050 | 0.592583 | 0.145789 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.930443 | 0.393549 |
-| label5 | 0.992987 | 1.000000 | 0.995000 | 0.959392 | 0.855135 | 0.563761 | 0.116973 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.980063 | 0.853342 | 0.345358 |
-
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| img1792 - img1280 | -0.000197 | -0.000154 | -0.000019 | -0.002967 | +0.020008 | -0.022000 | +0.019698 |
-| label1 img1792 - img1280 | +0.002777 | -0.000926 | -0.000116 | -0.044049 | +0.087072 | -0.107581 | -0.001500 |
-
-与 `imgsz=1536` 结果相比：
-
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| img1792 - img1536 | -0.000010 | +0.000000 | +0.000019 | -0.014472 | -0.018415 | -0.005257 | +0.018088 |
-| label1 img1792 - img1536 | -0.000400 | +0.000000 | +0.000114 | -0.094997 | -0.085149 | -0.038478 | -0.022126 |
-
-结论：`imgsz=1792` 提升了整体 `mAP95`，但整体 `mAP80/mAP85/mAP90` 均低于 `imgsz=1536`，且 `label1` 的 `mAP80/mAP85/mAP90/mAP95` 全面低于 `imgsz=1536`。继续拉大分辨率不应作为当前主线，`imgsz=1536` 更适合作为高分辨率候选配置。
-
-### 9.12 yolo11l-obb 50 轮 imgsz=1536 close_mosaic=20 训练
-
-配置：
-
-```text
-model: yolo11l-obb.pt
-epochs: 50
-imgsz: 1536
-batch: 8
-device: 0,1
-close_mosaic: 20
+degrees: 0.0
 val: test
 ```
 
@@ -467,31 +161,47 @@ val: test
 
 | class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.998823 | 1.000000 | 0.995000 | 0.948144 | 0.894674 | 0.682422 | 0.202414 |
-| label1 | 0.999663 | 1.000000 | 0.995000 | 0.778797 | 0.540675 | 0.190728 | 0.016667 |
-| label2 | 0.997026 | 1.000000 | 0.995000 | 0.995000 | 0.980190 | 0.907051 | 0.220246 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.985000 | 0.965256 | 0.669513 | 0.139222 |
-| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.974114 | 0.404836 |
-| label5 | 0.996250 | 1.000000 | 0.995000 | 0.940066 | 0.903443 | 0.483189 | 0.121423 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.983481 | 0.869937 | 0.312090 |
+| all | 0.993263 | 1.000000 | 0.994857 | 0.917490 | 0.805687 | 0.618882 | 0.195674 |
+| label1_thin | 0.993305 | 1.000000 | 0.995000 | 0.812355 | 0.526756 | 0.371545 | 0.023200 |
+| label1_thick | 0.964738 | 1.000000 | 0.994000 | 0.734939 | 0.423884 | 0.143500 | 0.047654 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.981076 | 0.870748 | 0.289849 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.979684 | 0.927963 | 0.620615 | 0.146949 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.928924 | 0.495581 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.910454 | 0.800128 | 0.491211 | 0.078691 |
+| label6 | 0.994795 | 1.000000 | 0.995000 | 0.995000 | 0.985000 | 0.905628 | 0.287796 |
 
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
+IoU85 可视化统计：
 
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| img1536_close_mosaic20 - img1280 | +0.002515 | +0.001854 | +0.000020 | -0.000674 | +0.033407 | -0.009242 | +0.002773 |
-| label1 img1536_close_mosaic20 - img1280 | +0.011700 | +0.011122 | +0.000119 | -0.014132 | +0.113196 | -0.092303 | +0.007962 |
+```text
+analysis: runs/analysis/iou85_overlay_yolo11l_label1_thin_thick_e50_img1280_b4
+GT rows: 478
+failed rows: 146
+failed images: 71
+missing predictions: 0
+```
 
-与 `imgsz=1536` 无额外增强结果相比：
+| class | GT | IoU85 failed | failed rate | mean IoU |
+| --- | ---: | ---: | ---: | ---: |
+| label1_thick | 29 | 20 | 69.0% | 0.778 |
+| label1_thin | 54 | 33 | 61.1% | 0.796 |
+| label2 | 79 | 9 | 11.4% | 0.897 |
+| label3 | 79 | 27 | 34.2% | 0.870 |
+| label4 | 79 | 10 | 12.7% | 0.901 |
+| label5 | 79 | 34 | 43.0% | 0.848 |
+| label6 | 79 | 13 | 16.5% | 0.888 |
 
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| img1536_close_mosaic20 - img1536 | +0.002702 | +0.002008 | +0.000058 | -0.012179 | -0.005016 | +0.007501 | +0.001163 |
-| label1 img1536_close_mosaic20 - img1536 | +0.008523 | +0.012048 | +0.000349 | -0.065080 | -0.059025 | -0.023200 | -0.012664 |
+角度段统计：
 
-结论：`imgsz=1536 + close_mosaic=20` 没有叠加出预期收益。它相对 `imgsz=1536` 小幅提升了整体 `mAP90/mAP95`，但 `label1 mAP80/mAP85/mAP90/mAP95` 全部下降，说明 `close_mosaic=20` 在高分辨率下主要改善的是其他类别的高 IoU 波动，并没有解决 `label1` 的严格定位问题。下一步不应继续沿着 `imgsz=1536 + close_mosaic` 加强组合调参。
+| GT top-edge angle | GT | IoU85 failed | failed rate | mean IoU |
+| --- | ---: | ---: | ---: | ---: |
+| 0-2 deg | 426 | 123 | 28.9% | 0.868 |
+| 2-5 deg | 21 | 6 | 28.6% | 0.861 |
+| 5-10 deg | 28 | 16 | 57.1% | 0.826 |
+| 10+ deg | 3 | 1 | 33.3% | 0.849 |
 
-### 9.13 yolo11l-obb 50 轮定位损失权重训练
+结论：拆分后 `label1_thin` 的 `mAP90` 高于原 `label1` baseline，但 `label1_thick` 样本少且严格 IoU 仍弱。5-10 度样本失败率明显升高，说明角度一致性是非 label1 类别的重要问题。
+
+### 9.2 yolo11l-obb 50 轮 imgsz=1280 degrees=5
 
 配置：
 
@@ -500,10 +210,8 @@ model: yolo11l-obb.pt
 epochs: 50
 imgsz: 1280
 batch: 8
-device: 0,1
-box: 10.0
-dfl: 2.0
-angle: 1.5
+device: 0
+degrees: 5.0
 val: test
 ```
 
@@ -511,61 +219,119 @@ val: test
 
 | class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| all | 0.996678 | 1.000000 | 0.994980 | 0.957587 | 0.870653 | 0.680055 | 0.190885 |
-| label1 | 0.987211 | 1.000000 | 0.994881 | 0.859541 | 0.567384 | 0.237482 | 0.010596 |
-| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.975633 | 0.872336 | 0.265826 |
-| label3 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.925673 | 0.631920 | 0.119802 |
-| label4 | 0.996229 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.952215 | 0.411464 |
-| label5 | 0.996628 | 1.000000 | 0.995000 | 0.905983 | 0.787251 | 0.487453 | 0.085653 |
-| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.972975 | 0.898924 | 0.251968 |
+| all | 0.992978 | 0.999534 | 0.994857 | 0.919840 | 0.821532 | 0.621163 | 0.171728 |
+| label1_thin | 0.990835 | 1.000000 | 0.995000 | 0.809321 | 0.526985 | 0.163999 | 0.004081 |
+| label1_thick | 0.966558 | 0.996735 | 0.994000 | 0.734238 | 0.423700 | 0.270346 | 0.039765 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.883671 | 0.224622 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.972532 | 0.950316 | 0.670539 | 0.071438 |
+| label4 | 0.993454 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.930823 | 0.509387 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.937789 | 0.864720 | 0.542588 | 0.083300 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.886178 | 0.269503 |
 
-与 `yolo11l e50 imgsz1280` 无额外增强结果相比：
+IoU85 可视化统计：
 
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| box10_dfl2_angle1.5 - img1280 | +0.000370 | +0.001854 | +0.000000 | +0.008769 | +0.009386 | -0.011609 | -0.008756 |
-| label1 box10_dfl2_angle1.5 - img1280 | -0.000752 | +0.011122 | +0.000000 | +0.066612 | +0.139905 | -0.045549 | +0.001891 |
+```text
+analysis: runs/analysis/iou85_overlay_yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest
+GT rows: 478
+failed rows: 162
+failed images: 76
+missing predictions: 0
+```
 
-结论：提高 `box/dfl/angle` 损失权重没有达到提升 `mAP90` 的目标。它明显改善了 `label1 mAP80/mAP85`，说明定位监督变强后中高 IoU 区间有收益；但整体 `mAP90/mAP95` 和 `label1 mAP90` 仍低于 `imgsz=1280` baseline，说明当前瓶颈更像是 `label1` 边界定义、角度一致性或少量难例导致的高 IoU 不稳定，而不是单纯定位损失权重不足。
+| class | GT | IoU85 failed | failed rate | mean IoU |
+| --- | ---: | ---: | ---: | ---: |
+| label1_thick | 29 | 19 | 65.5% | 0.787 |
+| label1_thin | 54 | 41 | 75.9% | 0.775 |
+| label2 | 79 | 16 | 20.3% | 0.893 |
+| label3 | 79 | 26 | 32.9% | 0.863 |
+| label4 | 79 | 8 | 10.1% | 0.897 |
+| label5 | 79 | 37 | 46.8% | 0.851 |
+| label6 | 79 | 15 | 19.0% | 0.889 |
 
-### 9.14 yolo11m 与 yolo11l 对比
+角度段统计：
 
-| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| yolo11m e30 imgsz1024 | 0.999066 | 0.997992 | 0.994961 | 0.938099 | 0.866518 | 0.690608 | 0.204737 |
-| yolo11m e60 imgsz1024 | 0.995575 | 1.000000 | 0.994821 | 0.941476 | 0.858661 | 0.678999 | 0.228278 |
-| yolo11l e50 imgsz1280 | 0.996308 | 0.998146 | 0.994980 | 0.948818 | 0.861267 | 0.691664 | 0.199641 |
-| yolo11l e50 imgsz1280 weakaug | 0.997233 | 0.998159 | 0.993512 | 0.942275 | 0.855466 | 0.655579 | 0.185220 |
-| yolo11l e50 imgsz1280 close_mosaic20 | 0.996842 | 0.996699 | 0.994922 | 0.953682 | 0.889249 | 0.656411 | 0.180590 |
-| yolo11l e50 imgsz1280 close_mosaic15 | 0.996023 | 1.000000 | 0.994922 | 0.941815 | 0.882227 | 0.671463 | 0.194476 |
-| yolo11l e50 imgsz1280 mosaic0.5 | 0.997159 | 1.000000 | 0.994980 | 0.944234 | 0.874751 | 0.659501 | 0.234756 |
-| yolo11l e50 imgsz1280 scale0.25 | 0.999532 | 0.997752 | 0.994980 | 0.944884 | 0.894216 | 0.695846 | 0.171876 |
-| yolo11l e50 imgsz1536 | 0.996121 | 0.997992 | 0.994942 | 0.960323 | 0.899690 | 0.674921 | 0.201251 |
-| yolo11l e50 imgsz1792 | 0.996111 | 0.997992 | 0.994961 | 0.945851 | 0.881275 | 0.669664 | 0.219339 |
-| yolo11l e50 imgsz1536 close_mosaic20 | 0.998823 | 1.000000 | 0.995000 | 0.948144 | 0.894674 | 0.682422 | 0.202414 |
-| yolo11l e50 imgsz1280 box10 dfl2 angle1.5 | 0.996678 | 1.000000 | 0.994980 | 0.957587 | 0.870653 | 0.680055 | 0.190885 |
-| l e50 - m e30 | -0.002758 | +0.000154 | +0.000019 | +0.010719 | -0.005251 | +0.001056 | -0.005096 |
-| l e50 - m e60 | +0.000733 | -0.001854 | +0.000159 | +0.007342 | +0.002606 | +0.012665 | -0.028637 |
+| GT top-edge angle | GT | IoU85 failed | failed rate | mean IoU |
+| --- | ---: | ---: | ---: | ---: |
+| 0-2 deg | 426 | 142 | 33.3% | 0.862 |
+| 2-5 deg | 21 | 6 | 28.6% | 0.879 |
+| 5-10 deg | 28 | 12 | 42.9% | 0.847 |
+| 10+ deg | 3 | 2 | 66.7% | 0.855 |
+
+结论：`degrees=5` 改善了 5-10 度样本的固定阈值 IoU85 失败率，并提升 `label3/label5` 的 mAP85/mAP90；但它显著损伤 `label1_thin mAP90/mAP95`，且固定 `conf=0.25` 可视化下 IoU85 失败数从 146 增加到 162。因此 `degrees=5` 不适合作为默认增强强度。
+
+### 9.3 thin/thick 实验对比
+
+| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 | IoU85 failed rows | failed images |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| b4 degrees0 | 0.993263 | 1.000000 | 0.994857 | 0.917490 | 0.805687 | 0.618882 | 0.195674 | 146 | 71 |
+| b8 degrees5 | 0.992978 | 0.999534 | 0.994857 | 0.919840 | 0.821532 | 0.621163 | 0.171728 | 162 | 76 |
+| b8 degrees5 - b4 degrees0 | -0.000285 | -0.000466 | +0.000000 | +0.002350 | +0.015845 | +0.002281 | -0.023946 | +16 | +5 |
+
+按 test 集数量加权合并 `label1_thin/thick` 后：
+
+| 实验 | weighted label1 mAP80 | weighted label1 mAP85 | weighted label1 mAP90 | weighted label1 mAP95 |
+| --- | ---: | ---: | ---: | ---: |
+| 原 label1 baseline | 0.792929 | 0.427479 | 0.283031 | 0.008705 |
+| thin/thick b4 degrees0 | 0.785306 | 0.490813 | 0.291867 | 0.031744 |
+| thin/thick b8 degrees5 | 0.783087 | 0.490897 | 0.201156 | 0.016549 |
 
 结论：
 
-- `yolo11l + imgsz1280` 提升了整体 `mAP80`，并且整体 `mAP90` 回到目前最好水平附近。
-- `mosaic=0.5` 把整体 `mAP95` 提升到当前最高，但整体 `mAP90` 明显低于 baseline，说明该参数改善的是部分极严格框贴合，不是整体定位稳定性。
-- `scale=0.25` 把整体 `mAP90` 提升到当前最高，但 `label1 mAP90/mAP95` 仍下降，说明几何增强不是解决 `label1` 严格 IoU 的主线。
-- `imgsz=1536` 把整体 `mAP80/mAP85` 提升到当前最高，并明显改善 `label1 mAP80/mAP85/mAP95`，但没有改善 `label1 mAP90`。
-- `imgsz=1792` 只提升了整体 `mAP95`，但相对 `imgsz=1536` 损失了 `label1` 的主要指标，因此继续拉大分辨率收益不足。
-- `imgsz=1536 + close_mosaic=20` 相对 `imgsz=1536` 小幅提升整体 `mAP90/mAP95`，但 `label1 mAP80/mAP85/mAP90/mAP95` 全部下降，不适合作为解决 `label1` 的主线。
-- `box=10.0/dfl=2.0/angle=1.5` 改善了 `label1 mAP80/mAP85`，但整体和 `label1 mAP90` 均下降，不支持继续单纯加大定位损失权重。
-- `label1` 的 `mAP80` 和 `mAP90` 在 yolo11l baseline 中改善明显，但加入增强后 `label1 mAP90` 普遍下降，短板仍集中在 `label1` 的框一致性、目标边界定义或输入分辨率上。
-- `label3`、`label4`、`label6` 在高 IoU 指标上波动较大，说明继续堆模型尺寸收益不稳定。
-- 下一阶段不应优先继续放大模型，也不应继续组合 `imgsz=1536` 与 `close_mosaic` 或单纯加大定位损失权重。更高优先级是检查 `label1` 标注和预测误差来源，其次对候选配置做多 seed 复验。
+- `label1` 拆分是有效方向：`b4 degrees0` 的加权 `label1 mAP85/mAP90/mAP95` 均高于原 `label1` baseline。
+- `degrees=5` 对倾斜样本和 `label3/label5` 有帮助，但对 `label1_thin` 的高 IoU 定位损伤太大。
+- 当前主要问题不是漏检，两个可视化结果 `missing predictions` 都是 0；瓶颈是框边界、角度规则和 thin/thick 边界定义在高 IoU 下不稳定。
 
-## 10. 旧训练日志归档
+### 9.4 下一步调整
 
-旧的 LabelMe 数据集训练日志已经迁移到：
+优先级：
+
+1. 补跑 `batch=8, degrees=0`，隔离 batch 变化影响。当前 `b4 degrees0` 和 `b8 degrees5` 同时改变了 batch 和旋转增强，不能把差异全部归因于 `degrees`。
+2. 跑 `degrees=3`，验证较弱旋转增强是否能保留 5-10 度样本收益，同时减少 `label1_thin` 高 IoU 损伤。
+3. 复查 `label1_thin_failed_iou85` 和 `label1_thick_failed_iou85`，重点检查上沿/下沿边界规则是否一致，尤其是 `CropImage_20260121180233350_*`、`CropImage_20260126135006021_*`、`CropImage_20260127201733495_*`。
+4. 对明显整体倾斜的母样本，优先统一标注角度规则；如果训练和部署图像都存在稳定倾斜，再考虑预矫正数据集，而不是继续叠加增强。
+
+建议下一轮命令：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
+  --model yolo11l-obb.pt \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --imgsz 1280 \
+  --epochs 50 \
+  --batch 8 \
+  --device 0 \
+  --workers 8 \
+  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg0_valtest \
+  --degrees 0.0
+```
+
+随后再跑单变量 `degrees=3.0`：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
+  --model yolo11l-obb.pt \
+  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --imgsz 1280 \
+  --epochs 50 \
+  --batch 8 \
+  --device 0 \
+  --workers 8 \
+  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg3_valtest \
+  --degrees 3.0
+```
+
+## 10. 训练日志归档
+
+旧训练日志已经迁移到：
 
 ```text
 docs/training_logs/legacy_labelme_training_log.md
+docs/training_logs/anylabeling_label1_6_training_log.md
 ```
 
-这些实验基于 `datasets/154843_obb_train_val_test` 和 `datasets/154843_obb_label1_6_train_val_test`，与当前 AnyLabeling train/test 数据集不同。
+其中：
+
+- `legacy_labelme_training_log.md` 基于更早的 LabelMe 数据集。
+- `anylabeling_label1_6_training_log.md` 基于未拆分 `label1` 的 AnyLabeling `label1-label6` 数据集。
+
+当前 README 主线只记录 `label1_thin/label1_thick` 数据集实验。

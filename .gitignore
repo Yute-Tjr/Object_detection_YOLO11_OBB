@@ -39,3 +39,11 @@
 /yolo11_obb/__pycache__/label1_thin_thick_dataset.cpython-38.pyc
 /yolo11_obb/__pycache__/obb_geometry.cpython-311.pyc
 /yolo11_obb/__pycache__/obb_geometry.cpython-38.pyc
+/datasets/154843_after_20260121210219803_label1_thin_thick_train_test/.DS_Store
+/datasets/154843_after_20260121210219803_label1_thin_thick_train_test/images/.DS_Store
+/datasets/154843_after_20260121210219803_label1_thin_thick_train_test/labels/.DS_Store
+/datasets/154843_obb_label1_6_train_val_test/.DS_Store
+/datasets/154843_obb_label1_6_train_val_test/images/.DS_Store
+/datasets/154843_obb_label1_6_train_val_test/labels/.DS_Store
+/tests/__pycache__/test_recent_anylabeling_dataset.cpython-38.pyc
+/yolo11_obb/__pycache__/recent_anylabeling_dataset.cpython-38.pyc
