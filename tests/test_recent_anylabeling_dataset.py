@@ -99,6 +99,38 @@ class RecentAnyLabelingDatasetTests(unittest.TestCase):
             self.assertIn("  0: label1_thin", data_yaml)
             self.assertIn("  1: label1_thick", data_yaml)
 
+    def test_create_recent_dataset_can_exclude_trailing_indices(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "anylabeling"
+            converted = root / "converted"
+            output = root / "datasets" / "recent_thin_thick_no_index1"
+
+            write_annotation(source / "CropImage_20260101000000000_F3-I0_OK-7.json", label1_width=10)
+            write_annotation(source / "CropImage_20260101000001000_F3-I0_OK-1.json", label1_width=30)
+            write_annotation(source / "CropImage_20260101000001000_F3-I0_OK-2.json", label1_width=10)
+            write_annotation(source / "CropImage_20260101000001000_F3-I0_OK-3.json", label1_width=10)
+
+            report = create_recent_label1_thin_thick_dataset(
+                source=source,
+                converted_output=converted,
+                dataset_output=output,
+                after_stem="20260101000000000_F3-I0_OK-7",
+                top_edge_threshold_px=20.0,
+                train_ratio=0.5,
+                seed=1,
+                exclude_indices=[1],
+            )
+
+            self.assertEqual(report.selected_json_files, 2)
+            self.assertEqual(report.excluded_json_files, 1)
+            self.assertFalse((converted / "CropImage_20260101000001000_F3-I0_OK-1.txt").exists())
+            self.assertTrue((converted / "CropImage_20260101000001000_F3-I0_OK-2.txt").exists())
+
+            manifest = (output / "split_manifest.csv").read_text(encoding="utf-8")
+            self.assertNotIn("OK-1.bmp", manifest)
+            self.assertIn("OK-2.bmp", manifest)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union
 
 from .anylabeling_to_obb import (
     ConversionReport,
@@ -22,6 +22,7 @@ OrderKey = Tuple[str, int]
 @dataclass(frozen=True)
 class RecentLabel1ThinThickReport:
     selected_json_files: int
+    excluded_json_files: int
     converted: ConversionReport
     dataset: Dict[str, Dict[str, object]]
 
@@ -36,16 +37,26 @@ def sample_order_key(stem: str) -> OrderKey:
     return timestamp_match.group(1), index
 
 
-def _selected_json_paths(source: Path, after_stem: str) -> List[Path]:
+def _selected_json_paths(
+    source: Path,
+    after_stem: str,
+    exclude_indices: Sequence[int] = (),
+) -> Tuple[List[Path], int]:
     after_key = sample_order_key(after_stem)
+    excluded_index_set = set(exclude_indices)
     json_paths = sorted(
         source.glob("*.json"),
         key=lambda path: (sample_order_key(path.stem), path.stem),
     )
-    selected = [path for path in json_paths if sample_order_key(path.stem) > after_key]
+    after_paths = [path for path in json_paths if sample_order_key(path.stem) > after_key]
+    selected = [
+        path
+        for path in after_paths
+        if sample_order_key(path.stem)[1] not in excluded_index_set
+    ]
     if not selected:
         raise ValueError(f"no JSON annotations found after marker: {after_stem}")
-    return selected
+    return selected, len(after_paths) - len(selected)
 
 
 def _convert_selected_anylabeling(
@@ -108,6 +119,7 @@ def create_recent_label1_thin_thick_dataset(
     train_ratio: float = 0.8,
     seed: int = 42,
     clip: bool = True,
+    exclude_indices: Sequence[int] = (),
 ) -> RecentLabel1ThinThickReport:
     source = Path(source).expanduser().resolve()
     converted_output = Path(converted_output).expanduser().resolve()
@@ -116,7 +128,11 @@ def create_recent_label1_thin_thick_dataset(
     if not source.is_dir():
         raise FileNotFoundError(f"source directory does not exist: {source}")
 
-    selected_json_paths = _selected_json_paths(source, after_stem)
+    selected_json_paths, excluded_json_files = _selected_json_paths(
+        source,
+        after_stem,
+        exclude_indices=exclude_indices,
+    )
     conversion_report = _convert_selected_anylabeling(
         source=source,
         output=converted_output,
@@ -138,6 +154,8 @@ def create_recent_label1_thin_thick_dataset(
         f"after_stem: {after_stem}",
         f"after_key: {sample_order_key(after_stem)}",
         f"selected_json_files: {len(selected_json_paths)}",
+        f"excluded_json_files: {excluded_json_files}",
+        f"exclude_indices: {','.join(str(index) for index in exclude_indices)}",
         f"top_edge_threshold_px: {top_edge_threshold_px}",
         f"train_ratio: {train_ratio}",
         f"seed: {seed}",
@@ -149,6 +167,7 @@ def create_recent_label1_thin_thick_dataset(
 
     return RecentLabel1ThinThickReport(
         selected_json_files=len(selected_json_paths),
+        excluded_json_files=excluded_json_files,
         converted=conversion_report,
         dataset=dataset_report,
     )

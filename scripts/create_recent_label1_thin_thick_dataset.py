@@ -16,10 +16,11 @@ from yolo11_obb.recent_anylabeling_dataset import create_recent_label1_thin_thic
 
 DEFAULT_SOURCE = ROOT / "已打标的数据202604" / "user1_2026-03-16_154843_anylabeling"
 DEFAULT_CONVERTED_OUTPUT = (
-    ROOT / "已打标的数据202604" / "user1_2026-03-16_154843_after_20260121210219803_obb_converted"
+    ROOT / "已打标的数据202604" / "user1_2026-03-16_154843_after_20260121210219803_no_index1_obb_converted"
 )
-DEFAULT_DATASET_OUTPUT = ROOT / "datasets" / "154843_after_20260121210219803_label1_thin_thick_train_test"
+DEFAULT_DATASET_OUTPUT = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test"
 DEFAULT_AFTER_STEM = "20260121210219803"
+DEFAULT_EXCLUDE_INDICES = [1]
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +34,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-edge-threshold-px", type=float, default=164.0)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--exclude-index",
+        type=int,
+        action="append",
+        default=DEFAULT_EXCLUDE_INDICES.copy(),
+        help="Trailing sample index to exclude. Defaults to 1; repeat to exclude more indices.",
+    )
     parser.add_argument("--no-clip", action="store_true")
     return parser.parse_args()
 
@@ -51,12 +59,14 @@ def main() -> None:
         train_ratio=args.train_ratio,
         seed=args.seed,
         clip=not args.no_clip,
+        exclude_indices=args.exclude_index,
     )
 
     print(f"converted: {converted_output}")
     print(f"dataset: {output}")
     print(f"data: {output / 'data.yaml'}")
     print(f"selected json files: {report.selected_json_files}")
+    print(f"excluded json files: {report.excluded_json_files}")
     print(f"converted objects: {report.converted.objects}")
     print(f"images copied: {report.converted.images_copied}")
     for split in ("train", "test"):

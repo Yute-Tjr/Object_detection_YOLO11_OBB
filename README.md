@@ -141,7 +141,7 @@ class,precision,recall,mAP50,mAP80,mAP85,mAP90,mAP95
 
 ## 9. label1_thin/thick 训练日志
 
-当前日志基于 `datasets/154843_obb_converted_label1_thin_thick_train_test`。重点指标仍是 `mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。
+当前日志基于 `label1_thin/label1_thick` 数据集实验，包含完整 AnyLabeling 数据集和按时间截取后的新子集。重点指标仍是 `mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。
 
 ### 9.1 yolo11l-obb 50 轮 imgsz=1280 baseline
 
@@ -281,42 +281,99 @@ missing predictions: 0
 - `degrees=5` 对倾斜样本和 `label3/label5` 有帮助，但对 `label1_thin` 的高 IoU 定位损伤太大。
 - 当前主要问题不是漏检，两个可视化结果 `missing predictions` 都是 0；瓶颈是框边界、角度规则和 thin/thick 边界定义在高 IoU 下不稳定。
 
-### 9.4 下一步调整
+### 9.4 yolo11l-obb 50 轮 after_20260121210219803 子集训练
+
+数据集：
+
+```text
+datasets/154843_after_20260121210219803_label1_thin_thick_train_test
+```
+
+该数据集从原 AnyLabeling 标注中排除 `20260121210219803` 时间戳本身及之前样本，只保留其后的 273 张图，再转换为 OBB，并继续把 `label1` 拆成 `label1_thin/label1_thick`。
+
+```text
+train: 216 images, 216 labels
+test:   57 images, 57 labels
+```
+
+配置：
+
+```text
+model: yolo11l-obb.pt
+epochs: 50
+imgsz: 1280
+batch: 8
+device: 0
+degrees: 0.0
+val: test
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.999303 | 1.000000 | 0.995000 | 0.930040 | 0.841242 | 0.700215 | 0.216485 |
+| label1_thin | 0.998076 | 1.000000 | 0.995000 | 0.850524 | 0.605308 | 0.469059 | 0.015000 |
+| label1_thick | 0.997043 | 1.000000 | 0.995000 | 0.764306 | 0.509383 | 0.367969 | 0.047500 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.949898 | 0.836529 | 0.256333 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.939410 | 0.883192 | 0.600875 | 0.113356 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.942428 | 0.583023 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.981038 | 0.960912 | 0.729835 | 0.173103 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.985000 | 0.985000 | 0.954808 | 0.327079 |
+
+IoU85 可视化输出：
+
+```text
+images processed: 57
+overlays: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay/all
+failed overlays: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay/failed_iou85
+matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay/matches.csv
+```
+
+与完整 thin/thick baseline 相比：
+
+| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| full b4 degrees0 | 0.993263 | 1.000000 | 0.994857 | 0.917490 | 0.805687 | 0.618882 | 0.195674 |
+| after212102 b8 degrees0 | 0.999303 | 1.000000 | 0.995000 | 0.930040 | 0.841242 | 0.700215 | 0.216485 |
+| after212102 - full b4 | +0.006040 | +0.000000 | +0.000143 | +0.012550 | +0.035555 | +0.081333 | +0.020811 |
+
+按 test 集数量加权合并 `label1_thin/thick` 后：
+
+| 实验 | weighted label1 mAP80 | weighted label1 mAP85 | weighted label1 mAP90 | weighted label1 mAP95 |
+| --- | ---: | ---: | ---: | ---: |
+| 原 label1 baseline | 0.792929 | 0.427479 | 0.283031 | 0.008705 |
+| thin/thick b4 degrees0 | 0.785306 | 0.490813 | 0.291867 | 0.031744 |
+| after212102 b8 degrees0 | 0.817247 | 0.568284 | 0.430042 | 0.027544 |
+
+结论：
+
+- 这轮是目前最有价值的方向：整体 `mAP90` 达到 `0.700215`，高于完整 thin/thick baseline 的 `0.618882`。
+- `label1_thin` 和 `label1_thick` 的严格 IoU 都明显改善，尤其 `label1_thick mAP90` 从 `0.143500` 提升到 `0.367969`。
+- 加权后的 `label1 mAP90` 从原始 `label1` baseline 的 `0.283031` 提升到 `0.430042`，说明重新截取数据源比继续调增强参数更接近根因。
+- `label3 mAP85/mAP90` 仍偏低，下一步需要结合本轮 `matches.csv` 看失败样本是否集中在少量角度或边界不一致样本。
+
+### 9.5 下一步调整
 
 优先级：
 
-1. 补跑 `batch=8, degrees=0`，隔离 batch 变化影响。当前 `b4 degrees0` 和 `b8 degrees5` 同时改变了 batch 和旋转增强，不能把差异全部归因于 `degrees`。
-2. 跑 `degrees=3`，验证较弱旋转增强是否能保留 5-10 度样本收益，同时减少 `label1_thin` 高 IoU 损伤。
-3. 复查 `label1_thin_failed_iou85` 和 `label1_thick_failed_iou85`，重点检查上沿/下沿边界规则是否一致，尤其是 `CropImage_20260121180233350_*`、`CropImage_20260126135006021_*`、`CropImage_20260127201733495_*`。
-4. 对明显整体倾斜的母样本，优先统一标注角度规则；如果训练和部署图像都存在稳定倾斜，再考虑预矫正数据集，而不是继续叠加增强。
+1. 先下载本轮 `runs/analysis/iou85_overlay`，统计 `matches.csv` 的失败类别和角度分布。
+2. 如果失败集中在少量样本，优先复核标注边界，而不是继续调增强参数。
+3. 如果 `label3` 的失败仍与角度相关，再在该新子集上单独尝试 `degrees=3`，不要直接回到 `degrees=5`。
+4. 当前主线应切换到 `after_20260121210219803` 子集；完整数据集实验只作为归档对照。
 
-建议下一轮命令：
+建议下一轮只在新子集上做小角度单变量实验：
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
   --model yolo11l-obb.pt \
-  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --data datasets/154843_after_20260121210219803_label1_thin_thick_train_test/data.yaml \
   --imgsz 1280 \
   --epochs 50 \
   --batch 8 \
   --device 0 \
   --workers 8 \
-  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg0_valtest \
-  --degrees 0.0
-```
-
-随后再跑单变量 `degrees=3.0`：
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
-  --model yolo11l-obb.pt \
-  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
-  --imgsz 1280 \
-  --epochs 50 \
-  --batch 8 \
-  --device 0 \
-  --workers 8 \
-  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg3_valtest \
+  --name yolo11l_after212102_label1_thin_thick_e50_img1280_b8_deg3_valtest \
   --degrees 3.0
 ```
 
