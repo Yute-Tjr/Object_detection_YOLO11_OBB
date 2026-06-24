@@ -57,6 +57,7 @@ class TrainOptions:
     seed: int = 42
     exist_ok: bool = False
     validate: bool = True
+    degrees: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -301,6 +302,7 @@ def build_train_kwargs(options: TrainOptions) -> Dict[str, object]:
         "exist_ok": options.exist_ok,
         "task": "obb",
         "val": options.validate,
+        "degrees": options.degrees,
     }
     if options.device:
         kwargs["device"] = options.device

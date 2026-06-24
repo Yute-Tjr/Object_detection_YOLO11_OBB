@@ -158,6 +158,16 @@ class DatasetConfigTests(unittest.TestCase):
 
         self.assertEqual(kwargs["val"], False)
 
+    def test_build_train_kwargs_passes_rotation_degrees(self) -> None:
+        options = TrainOptions(
+            data=Path("dataset/data.yaml"),
+            degrees=5.0,
+        )
+
+        kwargs = build_train_kwargs(options)
+
+        self.assertEqual(kwargs["degrees"], 5.0)
+
     def test_resolve_from_root_anchors_relative_project_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

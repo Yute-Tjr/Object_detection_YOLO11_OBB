@@ -46,6 +46,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--patience", type=int, default=30)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--degrees",
+        type=float,
+        default=0.0,
+        help="Maximum image rotation augmentation degrees. Example: 5.0",
+    )
     parser.add_argument("--exist-ok", action="store_true")
     parser.add_argument(
         "--no-val",
@@ -92,6 +98,7 @@ def main() -> None:
         seed=args.seed,
         exist_ok=args.exist_ok,
         validate=not args.no_val,
+        degrees=args.degrees,
     )
 
     if args.dry_run:
@@ -104,6 +111,7 @@ def main() -> None:
         print(f"epochs: {options.epochs}")
         print(f"batch: {options.batch}")
         print(f"val: {options.validate}")
+        print(f"degrees: {options.degrees}")
         return
 
     train(options)
