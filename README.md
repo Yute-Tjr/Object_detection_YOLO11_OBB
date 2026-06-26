@@ -433,31 +433,121 @@ matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay_yolo1
 - 去掉 `-1` 样本是有效的：整体 `mAP80/mAP85/mAP90` 分别提升到 `0.962807/0.894190/0.711124`，说明原先的 `-1` 大框确实在干扰定位。
 - `label1_thick` 明显受益，`mAP80/mAP85/mAP90` 从 `0.764306/0.509383/0.367969` 提升到 `0.875694/0.775000/0.643462`。
 - `label1_thin mAP90` 从 `0.469059` 降到 `0.335726`，说明拆分后 thin 类在高 IoU 阈值下仍不稳定；这可能来自样本少、边界定义细、或 thin/thick 分界规则不够贴合视觉语义。
-- 目前还不能直接断定“不需要区分 thin/thick”。同一 cleaned 数据集上还没有跑过未拆分 `label1` 的对照实验；如果最终业务不需要输出 thin/thick，下一步应在 no-index1 数据集上生成 `label1-label6` 版本并同配置训练对照。
+- 同一 cleaned 数据集上的未拆分 `label1` 对照见 9.6；对照结果显示，单一 `label1` 的整体 `all` 指标更高，但 `label1` 自身的 `mAP85/mAP90` 和 IoU85 通过率更差。
 
-### 9.6 下一步调整
+### 9.6 yolo11l-obb 50 轮 no-index1 单一 label1 对照
+
+数据集：
+
+```text
+datasets/154843_after_20260121210219803_no_index1_label1_6_train_test
+```
+
+该数据集与 9.5 使用同一个 no-index1 数据源和同一组 train/test 图片，只是不再把 `label1` 拆成 `label1_thin/label1_thick`，而是保留单一 `label1`。原 `other/label7` 仍过滤，不参与训练和评估。
+
+```text
+train: 198 images, 198 labels
+test:   53 images, 53 labels
+```
+
+类别分布：
+
+| split | objects | label1 | label2 | label3 | label4 | label5 | label6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 1188 | 198 | 198 | 198 | 198 | 198 | 198 |
+| test | 318 | 53 | 53 | 53 | 53 | 53 | 53 |
+
+配置：
+
+```text
+model: yolo11l-obb.pt
+epochs: 50
+imgsz: 1280
+batch: 8
+device: 0
+degrees: 0.0
+val: test
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.999845 | 1.000000 | 0.995000 | 0.978489 | 0.896184 | 0.736873 | 0.220707 |
+| label1 | 0.999072 | 1.000000 | 0.995000 | 0.937068 | 0.579722 | 0.349609 | 0.000405 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.985000 | 0.778777 | 0.294268 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.981038 | 0.949271 | 0.625321 | 0.104852 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.969906 | 0.534817 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.900283 | 0.806119 | 0.188774 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.967830 | 0.967830 | 0.891509 | 0.201127 |
+
+IoU85 可视化输出：
+
+```text
+analysis: runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_6_e50_img1280_b8_deg0_valtest
+GT rows: 318
+failed rows: 90
+failed images: 44
+missing predictions: 0
+```
+
+| class | GT | IoU85 failed | failed rate | mean IoU | median IoU | min IoU |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| label1 | 53 | 36 | 67.9% | 0.795 | 0.817 | 0.518 |
+| label2 | 53 | 10 | 18.9% | 0.891 | 0.900 | 0.758 |
+| label3 | 53 | 16 | 30.2% | 0.869 | 0.888 | 0.523 |
+| label4 | 53 | 2 | 3.8% | 0.919 | 0.928 | 0.821 |
+| label5 | 53 | 14 | 26.4% | 0.884 | 0.900 | 0.719 |
+| label6 | 53 | 12 | 22.6% | 0.887 | 0.887 | 0.682 |
+
+与 no-index1 thin/thick 结果相比：
+
+| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 | IoU85 failed rows | failed images |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| no-index1 thin/thick | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 | 84 | 41 |
+| no-index1 single label1 | 0.999845 | 1.000000 | 0.995000 | 0.978489 | 0.896184 | 0.736873 | 0.220707 | 90 | 44 |
+| single - thin/thick | +0.002686 | +0.000137 | +0.000000 | +0.015682 | +0.001994 | +0.025749 | +0.037595 | +6 | +3 |
+
+`label1` 单独对比：
+
+| 实验 | label1 mAP80 | label1 mAP85 | label1 mAP90 | label1 mAP95 | label1 IoU85 failed |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| no-index1 thin/thick 加权合并 | 0.918529 | 0.691935 | 0.440240 | 0.009434 | 29/53 |
+| no-index1 single label1 | 0.937068 | 0.579722 | 0.349609 | 0.000405 | 36/53 |
+| single - thin/thick | +0.018539 | -0.112213 | -0.090631 | -0.009029 | +7/53 |
+
+逐图对齐结论：
+
+```text
+thin/thick 过 IoU85、single label1 未过: 8 images
+single label1 过 IoU85、thin/thick 未过: 1 image
+```
+
+角度段统计：
+
+| GT top-edge angle | GT | IoU85 failed | failed rate | mean IoU |
+| --- | ---: | ---: | ---: | ---: |
+| 0-2 deg | 301 | 79 | 26.2% | 0.877 |
+| 2-5 deg | 5 | 1 | 20.0% | 0.896 |
+| 5-10 deg | 6 | 5 | 83.3% | 0.786 |
+| 10+ deg | 6 | 5 | 83.3% | 0.810 |
+
+结论：
+
+- 单一 `label1` 的整体 `all mAP80/mAP90/mAP95` 更高，但这主要来自其他类别波动，不能说明 `label1` 合并更好。
+- 对当前最关注的 `label1` 高 IoU 定位，thin/thick 更好：`mAP85/mAP90` 分别高 `0.112213/0.090631`，IoU85 失败数少 7 个。
+- 单一 `label1` 没有解决主要瓶颈；失败仍是检测到了但边界不够贴合，`missing predictions` 仍为 0。
+- 5 度以上倾斜样本仍是主要硬点，12 个 GT 中失败 10 个，说明瓶颈是角度和边界定位，而不是 thin/thick 分类本身。
+- 建议训练阶段保留 `label1_thin/label1_thick`。如果最终业务只需要输出单一 `label1`，更合理的方案是训练时保留 thin/thick，推理或评估后把 `label1_thin/label1_thick` 合并为 `label1`。
+
+### 9.7 下一步调整
 
 优先级：
 
-1. 先下载 no-index1 这轮 `runs/analysis/iou85_overlay_yolo11l_after212102_no_index1_label1_thin_thick_e50_img1280_b8_deg0_valtest`，统计 `matches.csv` 的失败类别和角度分布。
-2. 在同一个 no-index1 数据源上生成不拆分 `label1` 的 `label1-label6` 对照数据集，并用完全相同训练配置跑一轮，判断是否回到单一 `label1`。
-3. 如果不拆分 `label1` 后整体 `mAP85/mAP90` 不下降，且 `label1` 指标不低于加权后的 `0.691935/0.440240`，最终训练可以回到单一 `label1`。
-4. 如果不拆分后 `label1` 严格 IoU 变差，则继续保留 thin/thick，但需要复核 `label1_thin` 的边界一致性。
-
-建议优先做 no-index1 单一 `label1` 对照，而不是继续加大增强：
-
-```bash
-CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
-  --model yolo11l-obb.pt \
-  --data datasets/154843_after_20260121210219803_no_index1_label1_6_train_test/data.yaml \
-  --imgsz 1280 \
-  --epochs 50 \
-  --batch 8 \
-  --device 0 \
-  --workers 8 \
-  --name yolo11l_after212102_no_index1_label1_6_e50_img1280_b8_deg0_valtest \
-  --degrees 0.0
-```
+1. 保留 no-index1 thin/thick 作为当前主线训练数据集。
+2. 增加一个“推理后合并 label1”的评估流程：把预测和 GT 中的 `label1_thin/label1_thick` 映射回单一 `label1`，再计算 `label1-label6` 指标。
+3. 复核 `label1`、`label3`、`label5`、`label6` 的上下边界规则，尤其是 IoU 卡在 `0.80-0.85` 的样本。
+4. 对 5 度以上倾斜样本单独处理：优先检查标注角度一致性，再考虑小角度增强或预矫正。
 
 ## 10. 训练日志归档
 

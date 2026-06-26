@@ -101,6 +101,10 @@ def class_name(names: Dict[int, str], class_id: int) -> str:
     return str(names.get(class_id, class_id))
 
 
+def safe_dir_name(name: str) -> str:
+    return name.replace("/", "_")
+
+
 def save_image(path: Path, image: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(path), image):
@@ -121,6 +125,7 @@ def main() -> None:
 
     all_dir = output / "all"
     failed_dir = output / "failed_iou85"
+    success_dir = output / "success_iou85"
     matches_csv = output / "matches.csv"
     output.mkdir(parents=True, exist_ok=True)
 
@@ -140,7 +145,9 @@ def main() -> None:
         matched_predictions = {match.prediction for match in matches if match.prediction is not None}
 
         has_failed_match = False
+        has_success_match = False
         failed_class_names = set()
+        success_class_names = set()
 
         for match_index, match in enumerate(matches):
             draw_polygon(image, match.ground_truth, GT_COLOR, 2)
@@ -155,6 +162,9 @@ def main() -> None:
             if not match.passed:
                 has_failed_match = True
                 failed_class_names.add(name)
+            else:
+                has_success_match = True
+                success_class_names.add(name)
 
             rows.append(
                 {
@@ -181,8 +191,11 @@ def main() -> None:
         if has_failed_match:
             save_image(failed_dir / output_name, image)
             for failed_class_name in failed_class_names:
-                safe_name = failed_class_name.replace("/", "_")
-                save_image(output / f"{safe_name}_failed_iou85" / output_name, image)
+                save_image(output / f"{safe_dir_name(failed_class_name)}_failed_iou85" / output_name, image)
+        if has_success_match:
+            save_image(success_dir / output_name, image)
+            for success_class_name in success_class_names:
+                save_image(output / f"{safe_dir_name(success_class_name)}_success_iou85" / output_name, image)
         processed += 1
 
     with matches_csv.open("w", encoding="utf-8", newline="") as handle:
@@ -204,6 +217,7 @@ def main() -> None:
     print(f"images processed: {processed}")
     print(f"overlays: {all_dir}")
     print(f"failed overlays: {failed_dir}")
+    print(f"success overlays: {success_dir}")
     print(f"matches: {matches_csv}")
 
 
