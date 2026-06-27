@@ -48,3 +48,4 @@
 /tests/__pycache__/test_recent_anylabeling_dataset.cpython-38.pyc
 /yolo11_obb/__pycache__/recent_anylabeling_dataset.cpython-38.pyc
 /scripts/__pycache__/visualize_obb_iou_matches.cpython-38.pyc
+/scripts/__pycache__/summarize_anylabeling_descriptions.cpython-38.pyc

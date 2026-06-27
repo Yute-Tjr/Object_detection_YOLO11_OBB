@@ -549,7 +549,99 @@ single label1 过 IoU85、thin/thick 未过: 1 image
 3. 复核 `label1`、`label3`、`label5`、`label6` 的上下边界规则，尤其是 IoU 卡在 `0.80-0.85` 的样本。
 4. 对 5 度以上倾斜样本单独处理：优先检查标注角度一致性，再考虑小角度增强或预矫正。
 
-## 10. 训练日志归档
+## 10. 筛选后数据统计
+
+统计口径：
+
+```text
+source: 已打标的数据202604/user1_2026-03-16_154843_anylabeling
+after_stem: 20260121210219803
+exclude_indices: 1
+selected_json_files: 251
+```
+
+即只统计 `20260121210219803` 之后的数据，并排除文件名末尾为 `-1` 的样本。该口径与当前主线 no-index1 训练集一致。
+
+统计输出：
+
+```text
+runs/analysis/description_distribution_after_20260121210219803_no_index1
+```
+
+### 10.1 label1-label6 原始标签分布
+
+原始 AnyLabeling JSON 中，`label1-label6` 完全均衡：
+
+| label | shapes |
+| --- | ---: |
+| label1 | 251 |
+| label2 | 251 |
+| label3 | 251 |
+| label4 | 251 |
+| label5 | 251 |
+| label6 | 251 |
+| label7 | 2 |
+| lable7 | 1 |
+
+`label7/lable7` 是原始 JSON 中残留的排除类，不参与训练和评估。
+
+当前主线 thin/thick 训练数据分布：
+
+| split | label1_thin | label1_thick | label2 | label3 | label4 | label5 | label6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 132 | 66 | 198 | 198 | 198 | 198 | 198 |
+| test | 35 | 18 | 53 | 53 | 53 | 53 | 53 |
+| total | 167 | 84 | 251 | 251 | 251 | 251 | 251 |
+
+如果把 `label1_thin/label1_thick` 合并回单一 `label1`，训练数据仍然均衡：
+
+| split | label1 | label2 | label3 | label4 | label5 | label6 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| train | 198 | 198 | 198 | 198 | 198 | 198 |
+| test | 53 | 53 | 53 | 53 | 53 | 53 |
+| total | 251 | 251 | 251 | 251 | 251 | 251 |
+
+### 10.2 description 分类分布
+
+`description` 来自原始 AnyLabeling JSON 中每个 shape 的 `flags.description`。本表按原始 `label1-label6` 统计，`label1` 不拆 thin/thick。`EMPTY` 代表 description 为空，已计入总数。
+
+| label | total_shapes | category_sum | missing_from_sum | EMPTY | OK | OK_B | OK_G | OK_R | OK_W | NG_芯线露出多 | NG_芯线露出少 | NG_芯线未露出 | NG_铜线露出多 | NG_铜线露出少 | NG_铜线飞出 | NG_OTHER | OTHER |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| label1 | 251 | 251 | 0 | 1 | 4 | 126 | 43 | 40 | 37 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| label2 | 251 | 251 | 0 | 1 | 250 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| label3 | 251 | 251 | 0 | 1 | 85 | 0 | 0 | 0 | 0 | 162 | 1 | 0 | 2 | 0 | 0 | 0 | 0 |
+| label4 | 251 | 251 | 0 | 1 | 249 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| label5 | 251 | 251 | 0 | 1 | 97 | 0 | 0 | 0 | 0 | 0 | 141 | 3 | 0 | 2 | 6 | 1 | 0 |
+| label6 | 251 | 251 | 0 | 5 | 243 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 3 | 0 | 0 |
+| label7 | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 2 | 0 | 0 |
+| lable7 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |
+
+校验结果：所有 label 的 `missing_from_sum` 都是 `0`，说明 `EMPTY` 和其它 description 分类相加后没有遗漏。
+
+空 description 明细：
+
+| label | empty descriptions |
+| --- | ---: |
+| label1 | 1 |
+| label2 | 1 |
+| label3 | 1 |
+| label4 | 1 |
+| label5 | 1 |
+| label6 | 5 |
+| label7 | 0 |
+| lable7 | 0 |
+
+`label4` 中唯一的 `OTHER` 来自：
+
+```text
+CropImage_20260128140200491_F3-I0_OK-4.json
+label: label4
+description: 0空气能
+```
+
+该项应视为 description 误填，建议后续修正为 `OK` 或正确 NG 描述。
+
+## 11. 训练日志归档
 
 旧训练日志已经迁移到：
 
