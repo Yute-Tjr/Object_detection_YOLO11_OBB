@@ -1,0 +1,9 @@
+source: /Users/tongjiarui/Documents/目标检测/已打标的数据202604/user1_2026-03-16_154843_anylabeling
+output: /Users/tongjiarui/Documents/目标检测/datasets/classification/label5_ok_ng
+label_name: label5
+train_ratio: 0.8
+seed: 42
+total_samples: 251
+classes: {'NG': 153, 'OK': 98}
+train: {'NG': 118, 'OK': 80}
+test: {'NG': 35, 'OK': 18}
