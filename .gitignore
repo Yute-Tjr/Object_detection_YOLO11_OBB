@@ -46,6 +46,7 @@ __pycache__/
 /datasets/154843_obb_label1_6_train_val_test/.DS_Store
 /datasets/154843_obb_label1_6_train_val_test/images/.DS_Store
 /datasets/154843_obb_label1_6_train_val_test/labels/.DS_Store
+/datasets/classification/
 /tests/__pycache__/test_recent_anylabeling_dataset.cpython-38.pyc
 /yolo11_obb/__pycache__/recent_anylabeling_dataset.cpython-38.pyc
 /scripts/__pycache__/visualize_obb_iou_matches.cpython-38.pyc
