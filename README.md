@@ -139,6 +139,49 @@ class,precision,recall,mAP50,mAP80,mAP85,mAP90,mAP95
 
 `custom_metrics.csv` 不输出 `mAP50-95`。
 
+## 8.1 Label5 ResNet18 分类
+
+使用人工标注的 AnyLabeling OBB 框先裁剪 `label5` 区域，并用 Excel 中的 `tag1` 作为 OK/NG 分类标签：
+
+```bash
+python3 scripts/create_label_classification_dataset.py \
+  --excel outputs/label1_6_description.xlsx \
+  --source '已打标的数据202604/user1_2026-03-16_154843_anylabeling' \
+  --output datasets/classification/label5_ok_ng \
+  --label label5 \
+  --target-column tag1 \
+  --train-ratio 0.8 \
+  --seed 42 \
+  --overwrite
+```
+
+不下载预训练权重的 1 轮 smoke train：
+
+```bash
+.venv/bin/python scripts/train_resnet18_classifier.py \
+  --data datasets/classification/label5_ok_ng \
+  --epochs 1 \
+  --batch 8 \
+  --workers 0 \
+  --device cpu \
+  --name label5_resnet18_smoke \
+  --no-pretrained \
+  --exist-ok
+```
+
+服务器上的正式训练命令：
+
+```bash
+python3 scripts/train_resnet18_classifier.py \
+  --data datasets/classification/label5_ok_ng \
+  --epochs 30 \
+  --batch 32 \
+  --device 0 \
+  --name label5_resnet18_e30
+```
+
+当前第一版按用户要求使用 8:2 划分，`best.pt` 依据测试集 macro F1 选择。这个结果适合验证首版流程，但因为没有单独 validation split，指标会偏乐观。
+
 ## 9. label1_thin/thick 训练日志
 
 当前日志基于 `label1_thin/label1_thick` 数据集实验，包含完整 AnyLabeling 数据集和按时间截取后的新子集。重点指标仍是 `mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。
