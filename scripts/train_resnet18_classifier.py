@@ -12,10 +12,14 @@ if str(ROOT) not in sys.path:
 
 import torch
 import yaml
-from torch import nn
 from torch.utils.data import DataLoader
-from torchvision import datasets, models, transforms
 
+from yolo11_obb.classification_inference import (
+    ImageFolderWithPaths,
+    build_resnet18_model,
+    classification_transform,
+    select_device,
+)
 from yolo11_obb.classification_training import (
     classification_metrics,
     confusion_counts,
@@ -39,20 +43,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-pretrained", action="store_true")
     parser.add_argument("--exist-ok", action="store_true")
     return parser.parse_args()
-
-
-def build_model(num_classes: int, pretrained: bool) -> nn.Module:
-    weights = models.ResNet18_Weights.DEFAULT if pretrained else None
-    model = models.resnet18(weights=weights)
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
-    return model
-
-
-class ImageFolderWithPaths(datasets.ImageFolder):
-    def __getitem__(self, index):
-        image, target = super().__getitem__(index)
-        path, _ = self.samples[index]
-        return image, target, path
 
 
 def epoch_pass(model, loader, criterion, device, optimizer=None):
@@ -92,21 +82,15 @@ def main() -> None:
         raise FileExistsError(f"run directory is not empty: {run_dir}")
     (run_dir / "weights").mkdir(parents=True, exist_ok=True)
 
-    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    transform = transforms.Compose(
-        [
-            transforms.Resize((args.imgsz, args.imgsz)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
+    device = select_device(args.device)
+    transform = classification_transform(args.imgsz)
     train_dataset = ImageFolderWithPaths(data / "images" / "train", transform=transform)
     test_dataset = ImageFolderWithPaths(data / "images" / "test", transform=transform)
     train_loader = DataLoader(train_dataset, batch_size=args.batch, shuffle=True, num_workers=args.workers)
     test_loader = DataLoader(test_dataset, batch_size=args.batch, shuffle=False, num_workers=args.workers)
 
-    model = build_model(num_classes=len(train_dataset.classes), pretrained=not args.no_pretrained).to(device)
-    criterion = nn.CrossEntropyLoss()
+    model = build_resnet18_model(num_classes=len(train_dataset.classes), pretrained=not args.no_pretrained).to(device)
+    criterion = torch.nn.CrossEntropyLoss()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     args_payload = {
@@ -154,6 +138,20 @@ def main() -> None:
             }
             writer.writerow(row)
             handle.flush()
+            print(
+                " ".join(
+                    [
+                        f"epoch {epoch}/{args.epochs}",
+                        f"train_loss={row['train_loss']}",
+                        f"train_acc={row['train_accuracy']}",
+                        f"train_f1={row['train_macro_f1']}",
+                        f"test_loss={row['test_loss']}",
+                        f"test_acc={row['test_accuracy']}",
+                        f"test_f1={row['test_macro_f1']}",
+                    ]
+                ),
+                flush=True,
+            )
             score = float(test_metrics["macro_f1"])
             if score > best_score:
                 best_score = score

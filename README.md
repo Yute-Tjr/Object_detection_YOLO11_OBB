@@ -180,6 +180,35 @@ python3 scripts/train_resnet18_classifier.py \
   --name label5_resnet18_e30
 ```
 
+重新评测已有权重：
+
+```bash
+.venv/bin/python scripts/evaluate_resnet18_classifier.py \
+  --data datasets/classification/label5_ok_ng \
+  --weights runs/classification/label5_resnet18_e30/weights/best.pt \
+  --split test \
+  --batch 8 \
+  --workers 0 \
+  --device cpu \
+  --name label5_resnet18_eval \
+  --exist-ok
+```
+
+对任意图片或目录做预测：
+
+```bash
+.venv/bin/python scripts/predict_resnet18_classifier.py \
+  --weights runs/classification/label5_resnet18_e30/weights/best.pt \
+  --source datasets/classification/label5_ok_ng/images/test \
+  --batch 8 \
+  --workers 0 \
+  --device cpu \
+  --name label5_resnet18_predict \
+  --exist-ok
+```
+
+训练、评测和预测都会在 `runs/` 下写出 CSV 结果。训练脚本每个 epoch 会在终端输出 loss、accuracy 和 macro F1。
+
 当前第一版按用户要求使用 8:2 划分，`best.pt` 依据测试集 macro F1 选择。这个结果适合验证首版流程，但因为没有单独 validation split，指标会偏乐观。
 
 ## 9. label1_thin/thick 训练日志
