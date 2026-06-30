@@ -209,6 +209,42 @@ python3 scripts/train_resnet18_classifier.py \
 
 训练、评测和预测都会在 `runs/` 下写出 CSV 结果。训练脚本每个 epoch 会在终端输出 loss、accuracy 和 macro F1。
 
+### 8.1.1 label3/label5 原始标注框分类结果
+
+以下结果都基于 AnyLabeling 的原始人工 OBB 标注框裁剪，不接入 YOLO11-OBB 上游检测框。分类标签来自 `outputs/label1_6_description.xlsx` 中对应 label sheet 的 `tag1` 列，数据按 parent group 做 8:2 划分。
+
+| label | dataset | total | train | test | train run | evaluate run | best epoch | test accuracy | test macro F1 |
+| --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
+| label3 | `datasets/classification/label3_ok_ng` | 251 | NG=129, OK=69 | NG=36, OK=17 | `runs/classification/label3_resnet18_cpu_e30` | `runs/classification_eval/label3_resnet18_eval_cpu_e30` | 1 | 0.981132 | 0.977999 |
+| label5 | `datasets/classification/label5_ok_ng` | 251 | NG=118, OK=80 | NG=35, OK=18 | `runs/classification/label5_resnet18_mps_e30` | `runs/classification_eval/label5_resnet18_eval_smoke` | 2 | 1.000000 | 1.000000 |
+
+训练配置：
+
+| label | epochs | batch | imgsz | lr | weight_decay | device | pretrained |
+| --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| label3 | 30 | 8 | 224 | 0.0001 | 0.0001 | cpu | true |
+| label5 | 30 | 8 | 224 | 0.0001 | 0.0001 | mps | true |
+
+`best.pt` 独立 evaluate 混淆矩阵：
+
+label3:
+
+```text
+true\pred,NG,OK
+NG,36,0
+OK,1,16
+```
+
+label5:
+
+```text
+true\pred,NG,OK
+NG,35,0
+OK,0,18
+```
+
+label3 的训练 `last.pt` 最后一轮结果为 `test_accuracy=0.962264`、`test_macro_f1=0.955236`；上表中的结果是加载 `weights/best.pt` 后用独立 evaluate 脚本复评得到的结果。label5 的 `last.pt` 与 `best.pt` 在 test split 上均为 1.0。
+
 当前第一版按用户要求使用 8:2 划分，`best.pt` 依据测试集 macro F1 选择。这个结果适合验证首版流程，但因为没有单独 validation split，指标会偏乐观。
 
 ## 9. label1_thin/thick 训练日志
