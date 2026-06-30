@@ -4,6 +4,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 
+import cv2
+import numpy as np
+
 
 Point = Tuple[float, float]
 ObbPoints = Tuple[Point, Point, Point, Point]
@@ -107,3 +110,51 @@ def summary_row_for_image(
         row[f"{label}_conf"] = _format_optional_float(detection.cls_confidence)
         row[f"{label}_det_conf"] = f"{detection.det_conf:.6f}"
     return row
+
+
+def _box_color(detection: PipelineDetection) -> tuple[int, int, int]:
+    if detection.predicted_label == "NG":
+        return (0, 0, 255)
+    if detection.predicted_label == "OK":
+        return (0, 180, 0)
+    return (0, 200, 255)
+
+
+def _visualization_text(detection: PipelineDetection) -> str:
+    text = f"{detection.det_label} det={detection.det_conf:.2f}"
+    if detection.predicted_label:
+        text += f" {detection.predicted_label}"
+        if detection.cls_confidence is not None:
+            text += f" cls={detection.cls_confidence:.2f}"
+    return text
+
+
+def draw_visualization(
+    image_path: Path,
+    detections: Sequence[PipelineDetection],
+    output: Path,
+) -> None:
+    image = cv2.imread(str(image_path))
+    if image is None:
+        raise ValueError(f"failed to read image: {image_path}")
+
+    for detection in detections:
+        color = _box_color(detection)
+        points = np.array(detection.points, dtype=np.int32).reshape((-1, 1, 2))
+        cv2.polylines(image, [points], isClosed=True, color=color, thickness=2)
+        label_origin = tuple(points.reshape(-1, 2)[0])
+        text_origin = (int(label_origin[0]), max(int(label_origin[1]) - 6, 12))
+        cv2.putText(
+            image,
+            _visualization_text(detection),
+            text_origin,
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(output), image):
+        raise RuntimeError(f"failed to write visualization: {output}")

@@ -2,12 +2,16 @@ import sys
 import unittest
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from yolo11_obb.pipeline_predict import (
     PipelineDetection,
+    draw_visualization,
     final_result_from_selected,
     format_detection_row,
     selected_detection_by_label,
@@ -58,6 +62,32 @@ class PipelinePredictTests(unittest.TestCase):
         self.assertEqual(row["final_result"], "NG")
         self.assertEqual(row["label3_pred"], "OK")
         self.assertEqual(row["label5_pred"], "NG")
+
+    def test_draw_visualization_writes_annotated_image(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            image_path = root / "a.png"
+            image = np.zeros((80, 100, 3), dtype=np.uint8)
+            self.assertTrue(cv2.imwrite(str(image_path), image))
+            detection = PipelineDetection(
+                image_path,
+                image_path.name,
+                0,
+                "label3",
+                0.90,
+                ((10.0, 10.0), (60.0, 10.0), (60.0, 40.0), (10.0, 40.0)),
+            )
+            detection.predicted_label = "NG"
+            detection.cls_confidence = 0.95
+            output = root / "vis.png"
+
+            draw_visualization(image_path, [detection], output)
+
+            saved = cv2.imread(str(output))
+            self.assertIsNotNone(saved)
+            self.assertGreater(int(saved.sum()), 0)
 
 
 if __name__ == "__main__":
