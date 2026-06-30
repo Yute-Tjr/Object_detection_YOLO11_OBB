@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 
 from yolo11_obb.pipeline_predict import (
     PipelineDetection,
+    detections_from_yolo_result,
     draw_visualization,
     final_result_from_selected,
     format_detection_row,
@@ -88,6 +89,28 @@ class PipelinePredictTests(unittest.TestCase):
             saved = cv2.imread(str(output))
             self.assertIsNotNone(saved)
             self.assertGreater(int(saved.sum()), 0)
+
+    def test_detections_from_yolo_result_parses_obb_fields(self) -> None:
+        class FakeObb:
+            cls = [3]
+            conf = [0.875]
+            xyxyxyxy = [[10, 20, 60, 20, 60, 50, 10, 50]]
+
+        class FakeResult:
+            path = "/tmp/a.png"
+            names = {3: "label3"}
+            obb = FakeObb()
+
+        detections = detections_from_yolo_result(FakeResult())
+
+        self.assertEqual(len(detections), 1)
+        self.assertEqual(detections[0].image_name, "a.png")
+        self.assertEqual(detections[0].det_label, "label3")
+        self.assertEqual(detections[0].det_conf, 0.875)
+        self.assertEqual(
+            detections[0].points,
+            ((10.0, 20.0), (60.0, 20.0), (60.0, 50.0), (10.0, 50.0)),
+        )
 
 
 if __name__ == "__main__":
