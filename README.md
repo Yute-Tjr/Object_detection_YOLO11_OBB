@@ -155,31 +155,6 @@ python3 scripts/create_label_classification_dataset.py \
   --overwrite
 ```
 
-不下载预训练权重的 1 轮 smoke train：
-
-```bash
-.venv/bin/python scripts/train_resnet18_classifier.py \
-  --data datasets/classification/label5_ok_ng \
-  --epochs 1 \
-  --batch 8 \
-  --workers 0 \
-  --device cpu \
-  --name label5_resnet18_smoke \
-  --no-pretrained \
-  --exist-ok
-```
-
-服务器上的正式训练命令：
-
-```bash
-python3 scripts/train_resnet18_classifier.py \
-  --data datasets/classification/label5_ok_ng \
-  --epochs 30 \
-  --batch 32 \
-  --device 0 \
-  --name label5_resnet18_e30
-```
-
 重新评测已有权重：
 
 ```bash

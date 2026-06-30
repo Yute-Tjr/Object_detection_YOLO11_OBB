@@ -50,9 +50,9 @@ __pycache__/
 /yolo11_obb/__pycache__/recent_anylabeling_dataset.cpython-38.pyc
 /scripts/__pycache__/visualize_obb_iou_matches.cpython-38.pyc
 /scripts/__pycache__/summarize_anylabeling_descriptions.cpython-38.pyc
-/outputs
 /datasets/classification/.DS_Store
 /datasets/classification/label5_ok_ng/.DS_Store
 /datasets/classification/label5_ok_ng/images/.DS_Store
 /datasets/classification/label5_ok_ng/images/test/.DS_Store
 /datasets/classification/label5_ok_ng/images/train/.DS_Store
+/outputs/.DS_Store
