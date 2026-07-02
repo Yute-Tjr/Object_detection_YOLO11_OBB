@@ -18,7 +18,7 @@ from yolo11_obb.eval_metrics import default_custom_metrics_path, write_custom_me
 from yolo11_obb.runner import evaluate
 
 
-DEFAULT_DATA = ROOT / "datasets/154843_obb_train_val_test/data.yaml"
+DEFAULT_DATA = ROOT / "datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml"
 
 
 def parse_args() -> argparse.Namespace:

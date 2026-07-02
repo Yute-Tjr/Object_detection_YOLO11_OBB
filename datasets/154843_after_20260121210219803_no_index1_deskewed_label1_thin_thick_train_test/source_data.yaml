@@ -1,0 +1,12 @@
+path: datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test
+train: images/train
+val: images/test
+test: images/test
+names:
+  0: label1_thin
+  1: label1_thick
+  2: label2
+  3: label3
+  4: label4
+  5: label5
+  6: label6

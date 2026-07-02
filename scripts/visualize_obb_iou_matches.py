@@ -18,7 +18,7 @@ from yolo11_obb.config import IMAGE_EXTENSIONS, load_dataset_config, resolve_fro
 from yolo11_obb.obb_geometry import ObbBox, match_ground_truths, parse_obb_line
 
 
-DEFAULT_DATA = ROOT / "datasets" / "154843_obb_converted_label1_6_train_test" / "data.yaml"
+DEFAULT_DATA = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test" / "data.yaml"
 DEFAULT_OUTPUT = ROOT / "runs" / "analysis" / "iou85_overlay"
 
 GT_COLOR = (255, 0, 0)

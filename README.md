@@ -1,15 +1,27 @@
 # YOLO11-OBB Training
 
-## 1. 项目数据集:
+## 1. 当前实验数据集:
 
 ```text
-datasets/154843_obb_converted_label1_thin_thick_train_test
+datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test
+```
+
+当前稳定基线数据集：
+
+```text
+datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test
+```
+
+历史数据集已移动到：
+
+```text
+archive/datasets_legacy
 ```
 
 ## 2. 数据集配置:
 
 ```text
-datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml
+datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test/data.yaml
 ```
 
 ## 3. 依赖下载
@@ -24,8 +36,14 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 scripts/train_yolo11_obb.py \
-  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --data datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test/data.yaml \
   --dry-run
+```
+
+生成 deskew 数据集：
+
+```bash
+python3 scripts/create_deskewed_obb_dataset.py
 ```
 
 ## 5. Train
@@ -33,20 +51,20 @@ python3 scripts/train_yolo11_obb.py \
 ```bash
 CUDA_VISIBLE_DEVICES=0 python3 -u scripts/train_yolo11_obb.py \
   --model yolo11l-obb.pt \
-  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
+  --data datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test/data.yaml \
   --imgsz 1280 \
   --epochs 50 \
   --batch 8 \
   --device 0 \
   --workers 8 \
-  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest \
-  --degrees 5.0
+  --name yolo11l_no_index1_deskewed_thin_thick_e50_img1280_b8_deg0 \
+  --degrees 0.0
 ```
 
 当前 50 轮实验权重
 
 ```text
-runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt
+runs/obb/yolo11l_no_index1_deskewed_thin_thick_e50_img1280_b8_deg0/weights/best.pt
 ```
 
 ## 6. Evaluate
@@ -55,21 +73,21 @@ runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt
 
 ```bash
 python3 scripts/evaluate_yolo11_obb.py \
-  --data datasets/154843_obb_converted_label1_thin_thick_train_test/data.yaml \
-  --model runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt \
+  --data datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test/data.yaml \
+  --model runs/obb/yolo11l_no_index1_deskewed_thin_thick_e50_img1280_b8_deg0/weights/best.pt \
   --split test \
   --imgsz 1280 \
   --batch 8 \
   --device 0 \
-  --name yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest_eval
+  --name yolo11l_no_index1_deskewed_thin_thick_e50_img1280_b8_deg0_eval
 ```
 
 ## 7. Predict
 
 ```bash
 python3 scripts/predict_yolo11_obb.py \
-  --model runs/obb/yolo11l_label1_thin_thick_e50_img1280_b8_deg5_valtest/weights/best.pt \
-  --source datasets/154843_obb_converted_label1_thin_thick_train_test/images/test
+  --model runs/obb/yolo11l_no_index1_deskewed_thin_thick_e50_img1280_b8_deg0/weights/best.pt \
+  --source datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test/images/test
 ```
 
 Ultralytics YOLO11 supports OBB models such as `yolo11n-obb.pt`,
