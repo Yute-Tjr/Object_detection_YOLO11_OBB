@@ -641,7 +641,153 @@ single label1 过 IoU85、thin/thick 未过: 1 image
 - 5 度以上倾斜样本仍是主要硬点，12 个 GT 中失败 10 个，说明瓶颈是角度和边界定位，而不是 thin/thick 分类本身。
 - 建议训练阶段保留 `label1_thin/label1_thick`。如果最终业务只需要输出单一 `label1`，更合理的方案是训练时保留 thin/thick，推理或评估后把 `label1_thin/label1_thick` 合并为 `label1`。
 
-### 9.7 下一步调整
+### 9.7 deskew 数据集尝试
+
+背景：no-index1 thin/thick baseline 的主要问题不是漏检，而是高 IoU 阈值下框角度和边界贴合不稳定。原始图像中有些工件带轻微倾斜，有些接近水平；如果训练集同时混有这两种状态，模型在 `mAP90` 上会被角度误差明显放大。
+
+deskew 路线的做法是旋转图像和 OBB 标注框，而不是只把 OBB 框摆正。生成脚本会根据参考类别的 OBB 上沿角度估计每张图的旋转角，然后对图片和所有 OBB 点一起做同一个仿射变换：
+
+```bash
+python3 scripts/create_deskewed_obb_dataset.py
+```
+
+默认 deskew 数据集：
+
+```text
+datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test
+```
+
+#### 9.7.1 默认 deskew：参考 label2-label6 角度
+
+配置：
+
+```text
+model: yolo11l-obb.pt
+epochs: 50
+imgsz: 1280
+batch: 8
+device: 0
+degrees: 0.0
+deskew angle source: label2-label6
+val: test
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.998977 | 0.996231 | 0.995000 | 0.952708 | 0.872337 | 0.712290 | 0.238230 |
+| label1_thin | 1.000000 | 0.973615 | 0.995000 | 0.925743 | 0.667943 | 0.474149 | 0.039690 |
+| label1_thick | 0.992841 | 1.000000 | 0.995000 | 0.843444 | 0.684556 | 0.187843 | 0.019167 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.942568 | 0.866893 | 0.302600 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.955618 | 0.955618 | 0.849550 | 0.279554 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.968585 | 0.944602 | 0.466649 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.969528 | 0.902469 | 0.756886 | 0.301480 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.984623 | 0.984623 | 0.906111 | 0.258467 |
+
+结论：
+
+- 整体 `mAP90=0.712290`，与 no-index1 thin/thick baseline 的 `0.711124` 基本持平。
+- deskew 明显改善 `label1_thin/label3/label5`：其中 `label1_thin mAP90` 从 `0.335726` 到 `0.474149`，`label3 mAP90` 从 `0.586077` 到 `0.849550`，`label5 mAP90` 从 `0.674799` 到 `0.756886`。
+- 代价是 `label1_thick` 被严重损伤，`mAP90` 从 baseline 的 `0.643462` 降到 `0.187843`。说明单一 deskew 模型不能直接替代 baseline。
+
+#### 9.7.2 deskew 参考类调整：label1_thick + label2
+
+第二次尝试把 deskew 角度参考改为更贴近 `label1_thick` 的类别组合，希望减轻 `label1_thick` 被拉坏的问题。
+
+配置：
+
+```text
+model: yolo11l-obb.pt
+epochs: 50
+imgsz: 1280
+batch: 8
+device: 0
+degrees: 0.0
+deskew angle source: label1_thick + label2
+val: test
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.997926 | 1.000000 | 0.995000 | 0.955423 | 0.892459 | 0.693943 | 0.211020 |
+| label1_thin | 0.999942 | 1.000000 | 0.995000 | 0.798104 | 0.667577 | 0.455124 | 0.005238 |
+| label1_thick | 0.985541 | 1.000000 | 0.995000 | 0.995000 | 0.762000 | 0.319706 | 0.035500 |
+| label2 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.848970 | 0.314165 |
+| label3 | 1.000000 | 1.000000 | 0.995000 | 0.950703 | 0.929427 | 0.691681 | 0.138125 |
+| label4 | 1.000000 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.968962 | 0.569029 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.969906 | 0.913967 | 0.646848 | 0.206038 |
+| label6 | 1.000000 | 1.000000 | 0.995000 | 0.984245 | 0.984245 | 0.926311 | 0.209044 |
+
+结论：
+
+- `label1_thick mAP90` 从默认 deskew 的 `0.187843` 回升到 `0.319706`，但仍明显低于 baseline 的 `0.643462`。
+- `label3/label5` 的收益明显回落，整体 `mAP90=0.693943`，低于 baseline 和默认 deskew。
+- 这说明 deskew 的收益具有类别选择性：它适合修正 `label1_thin/label2/label3/label5` 的角度一致性，但不适合作为全部类别的统一训练空间。
+
+### 9.8 baseline + deskew 预测级融合
+
+融合思路：不再强行用一个模型覆盖所有类别，而是按类别选择更合适的预测来源。baseline 保留原图坐标系下表现更稳的类别，deskew 模型提供在矫正坐标系下更受益的类别；deskew 预测框再通过 `deskew_report.csv` 中的仿射矩阵逆变换回原图坐标。
+
+当前融合策略：
+
+| prediction source | class ids | classes |
+| --- | --- | --- |
+| baseline original model | `1,4,6` | `label1_thick`, `label4`, `label6` |
+| deskew model | `0,2,3,5` | `label1_thin`, `label2`, `label3`, `label5` |
+
+执行流程：
+
+```bash
+python3 scripts/fuse_baseline_deskew_predictions.py \
+  --baseline-labels runs/fusion/predict/baseline_original_test/labels \
+  --deskew-labels runs/fusion/predict/deskew_test/labels \
+  --output-labels runs/fusion/baseline_deskew_fused/labels
+```
+
+当前评估和可视化统一使用 Ultralytics OBB 口径，与 `scripts/evaluate_yolo11_obb.py` 输出的 `custom_metrics.csv` 同款。`scripts/evaluate_obb_prediction_labels.py` 只保留 Ultralytics OBB 评估，`scripts/visualize_obb_iou_matches.py` 的红/绿通过判断也使用同一套 OBB-IoU。
+
+```bash
+python3 scripts/evaluate_obb_prediction_labels.py \
+  --data datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml \
+  --pred-labels runs/fusion/baseline_deskew_fused/labels \
+  --split test \
+  --metric ultralytics \
+  --output runs/fusion/baseline_deskew_fused/custom_metrics.csv
+```
+
+`custom_metrics.csv` 结果：
+
+| class | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| all | 0.997908 | 0.996283 | 0.995000 | 0.952791 | 0.900863 | 0.747498 | 0.246202 |
+| label1_thin | 1.000000 | 0.973982 | 0.995000 | 0.893159 | 0.699316 | 0.437126 | 0.038690 |
+| label1_thick | 0.992874 | 1.000000 | 0.995000 | 0.875694 | 0.825000 | 0.455317 | 0.055000 |
+| label2 | 0.997476 | 1.000000 | 0.995000 | 0.995000 | 0.944149 | 0.866500 | 0.275405 |
+| label3 | 0.998153 | 1.000000 | 0.995000 | 0.956154 | 0.956154 | 0.848626 | 0.299271 |
+| label4 | 0.997856 | 1.000000 | 0.995000 | 0.995000 | 0.995000 | 0.967075 | 0.524072 |
+| label5 | 1.000000 | 1.000000 | 0.995000 | 0.969528 | 0.901419 | 0.730359 | 0.308614 |
+| label6 | 0.998997 | 1.000000 | 0.995000 | 0.985000 | 0.985000 | 0.927481 | 0.222362 |
+
+与主要候选结果对比：
+
+| 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| no-index1 thin/thick baseline | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
+| default deskew | 0.998977 | 0.996231 | 0.995000 | 0.952708 | 0.872337 | 0.712290 | 0.238230 |
+| deskew label1_thick+label2 | 0.997926 | 1.000000 | 0.995000 | 0.955423 | 0.892459 | 0.693943 | 0.211020 |
+| baseline + deskew fused | 0.997908 | 0.996283 | 0.995000 | 0.952791 | 0.900863 | 0.747498 | 0.246202 |
+
+结论：
+
+- 当前最好 `mAP90` 来自预测级融合：`0.747498`，相比 no-index1 thin/thick baseline 的 `0.711124` 提升 `+0.036374`。
+- 融合同时把 `mAP85` 提升到 `0.900863`，`mAP95` 提升到 `0.246202`；虽然 `mAP80` 低于 baseline，但当前优化目标是更严格的 `mAP90`。
+- 这次结果验证了“倾斜矫正不是全局替代方案，而是类别选择性补强方案”。后续优化应继续按类别处理，而不是继续提高单一增强强度。
+- `label1_thick` 仍没有恢复到 9.5 baseline 的高位，说明融合预测源、预测置信度或对应权重版本还需要继续核对；但整体 `all mAP90` 已经是当前主线最优结果。
+
+### 9.9 下一步调整
 
 优先级：
 

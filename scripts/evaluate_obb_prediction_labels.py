@@ -11,11 +11,7 @@ if str(ROOT) not in sys.path:
 
 from yolo11_obb.config import resolve_from_root
 from yolo11_obb.eval_metrics import build_custom_map_rows, write_custom_metrics_csv
-from yolo11_obb.prediction_label_eval import (
-    evaluate_prediction_labels,
-    evaluate_prediction_labels_ultralytics,
-    write_prediction_metrics_csv,
-)
+from yolo11_obb.prediction_label_eval import evaluate_prediction_labels_ultralytics
 
 
 DEFAULT_DATA = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test" / "data.yaml"
@@ -32,11 +28,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
         "--metric",
-        choices=["ultralytics", "polygon"],
+        choices=["ultralytics"],
         default="ultralytics",
-        help="ultralytics matches evaluate_yolo11_obb.py; polygon keeps the older strict polygon-IoU evaluator.",
+        help="Only Ultralytics OBB metrics are supported.",
     )
-    parser.add_argument("--plot", action="store_true", help="Save Ultralytics PR/F1/P/R curves when using --metric ultralytics.")
+    parser.add_argument("--plot", action="store_true", help="Save Ultralytics PR/F1/P/R curves.")
     return parser.parse_args()
 
 
@@ -46,19 +42,15 @@ def main() -> None:
     pred_labels = resolve_from_root(args.pred_labels, ROOT)
     output = resolve_from_root(args.output, ROOT)
 
-    if args.metric == "polygon":
-        rows = evaluate_prediction_labels(data_yaml=data, pred_labels=pred_labels, split=args.split)
-        write_prediction_metrics_csv(rows, output)
-    else:
-        result = evaluate_prediction_labels_ultralytics(
-            data_yaml=data,
-            pred_labels=pred_labels,
-            split=args.split,
-            save_dir=output.parent,
-            plot=args.plot,
-        )
-        write_custom_metrics_csv(result, output)
-        rows = build_custom_map_rows(result)
+    result = evaluate_prediction_labels_ultralytics(
+        data_yaml=data,
+        pred_labels=pred_labels,
+        split=args.split,
+        save_dir=output.parent,
+        plot=args.plot,
+    )
+    write_custom_metrics_csv(result, output)
+    rows = build_custom_map_rows(result)
 
     print(f"metrics: {output}")
     for row in rows:

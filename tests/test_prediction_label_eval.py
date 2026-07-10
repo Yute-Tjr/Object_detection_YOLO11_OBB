@@ -8,9 +8,10 @@ import cv2
 import numpy as np
 
 from yolo11_obb.prediction_label_eval import (
-    evaluate_prediction_labels,
     evaluate_prediction_labels_ultralytics,
+    match_ground_truths_ultralytics,
 )
+from yolo11_obb.obb_geometry import ObbBox
 
 
 def write_image(path: Path) -> None:
@@ -21,47 +22,45 @@ def write_image(path: Path) -> None:
 
 
 class PredictionLabelEvalTests(unittest.TestCase):
-    def test_evaluate_prediction_labels_reports_custom_iou_thresholds(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            dataset = root / "dataset"
-            pred = root / "pred"
-            pred.mkdir()
-            stem = "sample"
-            write_image(dataset / "images" / "test" / f"{stem}.bmp")
-            (dataset / "labels" / "test").mkdir(parents=True)
-            (dataset / "labels" / "test" / f"{stem}.txt").write_text(
-                "0 0.2 0.2 0.6 0.2 0.6 0.6 0.2 0.6\n",
-                encoding="utf-8",
-            )
-            (dataset / "data.yaml").write_text(
-                "\n".join(
-                    [
-                        "path: .",
-                        "train: images/test",
-                        "val: images/test",
-                        "test: images/test",
-                        "names:",
-                        "  0: label1",
-                    ]
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            (pred / f"{stem}.txt").write_text(
-                "0 0.2 0.2 0.6 0.2 0.6 0.6 0.2 0.6 0.99\n",
-                encoding="utf-8",
-            )
+    def test_match_ground_truths_ultralytics_uses_probiou_backend(self) -> None:
+        class FakeBackend:
+            def __init__(self):
+                self.probiou_inputs = None
 
-            rows = evaluate_prediction_labels(
-                data_yaml=dataset / "data.yaml",
-                pred_labels=pred,
-                split="test",
-            )
+            def probiou(self, gt_xywhr, pred_xywhr):
+                self.probiou_inputs = (gt_xywhr, pred_xywhr)
+                return np.array([[0.95, 0.20]], dtype=np.float32)
 
-            self.assertEqual(rows[0]["class"], "all")
-            self.assertAlmostEqual(rows[0]["mAP90"], 1.0)
-            self.assertAlmostEqual(rows[1]["mAP90"], 1.0)
+        gt = ObbBox(
+            class_id=0,
+            points=((0.0, 0.0), (20.0, 0.0), (20.0, 10.0), (0.0, 10.0)),
+        )
+        same_class = ObbBox(
+            class_id=0,
+            points=((2.0, 0.0), (22.0, 0.0), (22.0, 10.0), (2.0, 10.0)),
+            confidence=0.90,
+        )
+        wrong_class = ObbBox(
+            class_id=1,
+            points=((0.0, 0.0), (20.0, 0.0), (20.0, 10.0), (0.0, 10.0)),
+            confidence=0.99,
+        )
+        backend = FakeBackend()
+
+        matches = match_ground_truths_ultralytics(
+            [gt],
+            [same_class, wrong_class],
+            iou_threshold=0.90,
+            metric_backend=backend,
+        )
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].prediction, same_class)
+        self.assertAlmostEqual(matches[0].iou, 0.95)
+        self.assertTrue(matches[0].passed)
+        gt_xywhr, pred_xywhr = backend.probiou_inputs
+        self.assertEqual(gt_xywhr.shape, (1, 5))
+        self.assertEqual(pred_xywhr.shape, (2, 5))
 
     def test_ultralytics_metric_eval_builds_obb_metrics_from_prediction_labels(self) -> None:
         class FakeMetrics:

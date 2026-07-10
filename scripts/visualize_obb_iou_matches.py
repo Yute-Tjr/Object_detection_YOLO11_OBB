@@ -15,7 +15,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from yolo11_obb.config import IMAGE_EXTENSIONS, load_dataset_config, resolve_from_root
-from yolo11_obb.obb_geometry import ObbBox, match_ground_truths, parse_obb_line
+from yolo11_obb.obb_geometry import ObbBox, parse_obb_line
+from yolo11_obb.prediction_label_eval import UltralyticsObbMetricBackend, match_ground_truths_ultralytics
 
 
 DEFAULT_DATA = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test" / "data.yaml"
@@ -30,7 +31,7 @@ UNMATCHED_PRED_COLOR = (255, 0, 255)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Draw GT and prediction OBBs together and annotate same-class IoU matches.",
+        description="Draw GT and prediction OBBs together and annotate same-class Ultralytics OBB IoU matches.",
     )
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--pred-labels", type=Path, required=True)
@@ -105,6 +106,10 @@ def safe_dir_name(name: str) -> str:
     return name.replace("/", "_")
 
 
+def iou_tag(threshold: float) -> str:
+    return f"iou{int(round(threshold * 100)):02d}"
+
+
 def save_image(path: Path, image: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not cv2.imwrite(str(path), image):
@@ -123,11 +128,13 @@ def main() -> None:
     if not pred_labels.is_dir():
         raise FileNotFoundError(f"Prediction labels directory not found: {pred_labels}")
 
+    tag = iou_tag(args.iou_threshold)
     all_dir = output / "all"
-    failed_dir = output / "failed_iou85"
-    success_dir = output / "success_iou85"
+    failed_dir = output / f"failed_{tag}"
+    success_dir = output / f"success_{tag}"
     matches_csv = output / "matches.csv"
     output.mkdir(parents=True, exist_ok=True)
+    metric_backend = UltralyticsObbMetricBackend()
 
     rows: List[Dict[str, object]] = []
     processed = 0
@@ -141,7 +148,12 @@ def main() -> None:
         height, width = image.shape[:2]
         gt_boxes = read_boxes(gt_label_dir / f"{image_path.stem}.txt", width, height)
         pred_boxes = read_boxes(pred_labels / f"{image_path.stem}.txt", width, height)
-        matches = match_ground_truths(gt_boxes, pred_boxes, iou_threshold=args.iou_threshold)
+        matches = match_ground_truths_ultralytics(
+            gt_boxes,
+            pred_boxes,
+            iou_threshold=args.iou_threshold,
+            metric_backend=metric_backend,
+        )
         matched_predictions = {match.prediction for match in matches if match.prediction is not None}
 
         has_failed_match = False
@@ -156,7 +168,7 @@ def main() -> None:
             name = class_name(dataset.names, match.ground_truth.class_id)
             color = PASS_COLOR if match.passed else FAIL_COLOR
             confidence = "" if match.prediction is None or match.prediction.confidence is None else f" conf={match.prediction.confidence:.3f}"
-            text = f"{name} IoU={match.iou:.3f}{confidence}"
+            text = f"{name} OBB-IoU={match.iou:.3f}{confidence}"
             draw_text(image, text, text_origin(match.ground_truth, match_index % 3), color)
 
             if not match.passed:
@@ -191,11 +203,11 @@ def main() -> None:
         if has_failed_match:
             save_image(failed_dir / output_name, image)
             for failed_class_name in failed_class_names:
-                save_image(output / f"{safe_dir_name(failed_class_name)}_failed_iou85" / output_name, image)
+                save_image(output / f"{safe_dir_name(failed_class_name)}_failed_{tag}" / output_name, image)
         if has_success_match:
             save_image(success_dir / output_name, image)
             for success_class_name in success_class_names:
-                save_image(output / f"{safe_dir_name(success_class_name)}_success_iou85" / output_name, image)
+                save_image(output / f"{safe_dir_name(success_class_name)}_success_{tag}" / output_name, image)
         processed += 1
 
     with matches_csv.open("w", encoding="utf-8", newline="") as handle:
