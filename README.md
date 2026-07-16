@@ -2,10 +2,10 @@
 
 ## 1. 当前实验数据集
 
-当前稳定基线和模型选型对比都使用原图坐标系下的 thin/thick 数据集：
+当前 YOLO11l 基线和后续模型选型都使用原图坐标系下的 thin/thick 数据集：
 
 ```text
-datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test
+datasets/obb_thin_thick
 ```
 
 旧的 deskew 数据集和更早的数据集已归档到：
@@ -17,7 +17,7 @@ archive/datasets_legacy
 ## 2. 数据集配置
 
 ```text
-datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml
+datasets/obb_thin_thick/data.yaml
 ```
 
 ## 3. 依赖下载
@@ -32,32 +32,32 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 scripts/train_yolo11_obb.py \
-  --data datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml \
+  --data datasets/obb_thin_thick/data.yaml \
   --dry-run
 ```
 
 ## 5. Train
 
-模型选型的首个轻量基线。它与原 YOLO11l baseline 使用完全相同的数据集、图像尺寸、训练轮数、批大小、随机种子和数据增强参数；仅将初始权重换为 `yolo11n-obb.pt`。
+当前对照基线是 YOLO11l-OBB，配置固定为图像尺寸 1280、50 epoch、batch 8、seed 42、`degrees=0`，验证和测试均使用固定的 test split。
 
 ```bash
 python3 -u scripts/train_yolo11_obb.py \
-  --model yolo11n-obb.pt \
-  --data datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml \
+  --model yolo11l-obb.pt \
+  --data datasets/obb_thin_thick/data.yaml \
   --imgsz 1280 \
   --epochs 50 \
   --batch 8 \
-  --device mps \
+  --device 0 \
   --workers 8 \
   --seed 42 \
-  --name yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare \
+  --name yolo11l_obb_e50_img1280_b8_deg0 \
   --degrees 0.0
 ```
 
-新基线完成后权重位于：
+训练完成后权重位于：
 
 ```text
-runs/obb/yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare/weights/best.pt
+runs/obb/yolo11l_obb_e50_img1280_b8_deg0/weights/best.pt
 ```
 
 ## 6. Evaluate
@@ -66,30 +66,80 @@ runs/obb/yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare/weights/best.p
 
 ```bash
 python3 scripts/evaluate_yolo11_obb.py \
-  --data datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml \
-  --model runs/obb/yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare/weights/best.pt \
+  --data datasets/obb_thin_thick/data.yaml \
+  --model runs/obb/yolo11l_obb_e50_img1280_b8_deg0/weights/best.pt \
   --split test \
   --imgsz 1280 \
   --batch 8 \
-  --device mps \
-  --name yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare_eval
+  --device 0 \
+  --name yolo11l_obb_e50_img1280_b8_deg0_eval
 ```
 
 ## 7. Predict
 
 ```bash
 python3 scripts/predict_yolo11_obb.py \
-  --model runs/obb/yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare/weights/best.pt \
-  --source datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/images/test \
+  --model runs/obb/yolo11l_obb_e50_img1280_b8_deg0/weights/best.pt \
+  --source datasets/obb_thin_thick/images/test \
   --imgsz 1280 \
-  --device mps \
-  --name yolo11n_no_index1_thin_thick_e50_img1280_b8_deg0_compare_pred
+  --device 0 \
+  --name yolo11l_obb_e50_img1280_b8_deg0_pred
 ```
 
-Ultralytics YOLO11 supports OBB models such as `yolo11n-obb.pt`,
-`yolo11s-obb.pt`, `yolo11m-obb.pt`, `yolo11l-obb.pt`, and `yolo11x-obb.pt`.
+## 8. RHINO R50 对比实验
 
-## 8. AnyLabeling OBB 数据集
+`datasets/rhino_obb` 由 `datasets/obb_thin_thick` 转换而来，图像和 train/test 划分不变，只将 YOLO OBB 归一化四点标注转换为 RHINO/MMRotate 的 DOTA 四点 annfile 格式：198 张训练图像、53 张测试图像、1188/318 个实例。
+
+```bash
+python3 scripts/create_rhino_dataset.py \
+  --data datasets/obb_thin_thick/data.yaml \
+  --output datasets/rhino_obb
+```
+
+训练前在服务器准备 [SIAnalytics/RHINO](https://github.com/SIAnalytics/RHINO) 及其官方 MMRotate 依赖。RHINO 原生 `DOTAMetric mAP@0.5` 仅用于训练过程诊断；最终模型比较统一通过本仓库的 `batch_probiou` 计算 `mAP50/mAP80/mAP85/mAP90/mAP95`，与 YOLO11l 完全对齐。
+
+KLD 版本是 RHINO 官方的 `GDLoss/GDCost(KLD)` 配置：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 scripts/train_rhino.py \
+  --rhino-root ~/RHINO \
+  --data datasets/rhino_obb \
+  --variant kld \
+  --imgsz 1280 --epochs 50 --batch 2 --workers 4 \
+  --name rhino_r50_kld_e50_img1280_b2
+```
+
+RIoU 版本是受控消融：保持同一 RHINO R50、Hausdorff matching 和其余训练参数，只把回归损失和 Hungarian matching 的 KLD 项替换为 RHINO 仓库自带的 `RotatedIoULoss/RotatedIoUCost`：
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python3 scripts/train_rhino.py \
+  --rhino-root ~/RHINO \
+  --data datasets/rhino_obb \
+  --variant riou \
+  --imgsz 1280 --epochs 50 --batch 2 --workers 4 \
+  --name rhino_r50_riou_e50_img1280_b2
+```
+
+每个训练 run 会生成 `runs/rhino/<run>/config.py`。以 KLD 为例，选择 run 内训练产生的最佳 `.pth` 后测试并统一评估：
+
+```bash
+python3 scripts/validate_rhino.py \
+  --rhino-root ~/RHINO \
+  --config runs/rhino/rhino_r50_kld_e50_img1280_b2/config.py \
+  --weights runs/rhino/rhino_r50_kld_e50_img1280_b2/<best_checkpoint>.pth \
+  --output runs/rhino/rhino_r50_kld_e50_img1280_b2/test_predictions.pkl \
+  --work-dir runs/rhino/rhino_r50_kld_e50_img1280_b2/test
+
+python3 scripts/evaluate_rhino.py \
+  --data datasets/obb_thin_thick/data.yaml \
+  --predictions runs/rhino/rhino_r50_kld_e50_img1280_b2/test_predictions.pkl \
+  --split test \
+  --run-dir runs/rhino/rhino_r50_kld_e50_img1280_b2/test
+```
+
+第二条命令依次导出 `test/labels/*.txt` 与 `test/custom_metrics.csv`；后者是与 YOLO11l 高 IoU 指标对比的唯一结果文件。RIoU 将上述 run 名替换为 `rhino_r50_riou_e50_img1280_b2` 即可。首次在服务器执行前，应先在相同命令后追加 `--dry-run`，确认 RHINO 官方配置路径和依赖版本。
+
+## 9. AnyLabeling OBB 数据集
 
 主要修改标注框的精确度。新标注转换后的完整 OBB 目录：
 
@@ -153,7 +203,7 @@ class,precision,recall,mAP50,mAP80,mAP85,mAP90,mAP95
 
 `custom_metrics.csv` 不输出 `mAP50-95`。
 
-## 8.1 Label5 ResNet18 分类
+## 9.1 Label5 ResNet18 分类
 
 使用人工标注的 AnyLabeling OBB 框先裁剪 `label5` 区域，并用 Excel 中的 `tag1` 作为 OK/NG 分类标签：
 
@@ -178,9 +228,7 @@ python3 scripts/create_label_classification_dataset.py \
   --split test \
   --batch 8 \
   --workers 0 \
-  --device cpu \
-  --name label5_resnet18_eval \
-  --exist-ok
+  --device cpu
 ```
 
 对任意图片或目录做预测：
@@ -191,21 +239,19 @@ python3 scripts/create_label_classification_dataset.py \
   --source datasets/classification/label5_ok_ng/images/test \
   --batch 8 \
   --workers 0 \
-  --device cpu \
-  --name label5_resnet18_predict \
-  --exist-ok
+  --device cpu
 ```
 
-训练、评测和预测都会在 `runs/` 下写出 CSV 结果。训练脚本每个 epoch 会在终端输出 loss、accuracy 和 macro F1。
+训练、评测和预测默认都写回同一目录 `runs/classification/<train_run>/`：训练文件以 `train_` 开头，独立评测文件以 `eval_` 开头，预测文件以 `predict_` 开头；权重固定保存在 `weights/best.pt` 和 `weights/last.pt`。训练脚本每个 epoch 会在终端输出 loss、accuracy 和 macro F1。
 
-### 8.1.1 label3/label5 原始标注框分类结果
+### 9.1.1 label3/label5 原始标注框分类结果
 
 以下结果都基于 AnyLabeling 的原始人工 OBB 标注框裁剪，不接入 YOLO11-OBB 上游检测框。分类标签来自 `outputs/label1_6_description.xlsx` 中对应 label sheet 的 `tag1` 列，数据按 parent group 做 8:2 划分。
 
 | label | dataset | total | train | test | train run | evaluate run | best epoch | test accuracy | test macro F1 |
 | --- | --- | ---: | --- | --- | --- | --- | ---: | ---: | ---: |
-| label3 | `datasets/classification/label3_ok_ng` | 251 | NG=129, OK=69 | NG=36, OK=17 | `runs/classification/label3_resnet18_cpu_e30` | `runs/classification_eval/label3_resnet18_eval_cpu_e30` | 1 | 0.981132 | 0.977999 |
-| label5 | `datasets/classification/label5_ok_ng` | 251 | NG=118, OK=80 | NG=35, OK=18 | `runs/classification/label5_resnet18_mps_e30` | `runs/classification_eval/label5_resnet18_eval_smoke` | 2 | 1.000000 | 1.000000 |
+| label3 | `datasets/classification/label3_ok_ng` | 251 | NG=129, OK=69 | NG=36, OK=17 | `runs/classification/label3_resnet18_cpu_e30` | `runs/classification/label3_resnet18_cpu_e30` | 1 | 0.981132 | 0.977999 |
+| label5 | `datasets/classification/label5_ok_ng` | 251 | NG=118, OK=80 | NG=35, OK=18 | `runs/classification/label5_resnet18_mps_e30` | `runs/classification/label5_resnet18_mps_e30` | 2 | 1.000000 | 1.000000 |
 
 训练配置：
 
@@ -236,11 +282,11 @@ label3 的训练 `last.pt` 最后一轮结果为 `test_accuracy=0.962264`、`tes
 
 当前第一版按用户要求使用 8:2 划分，`best.pt` 依据测试集 macro F1 选择。这个结果适合验证首版流程，但因为没有单独 validation split，指标会偏乐观。
 
-## 9. label1_thin/thick 训练日志
+## 10. label1_thin/thick 训练日志
 
 当前日志基于 `label1_thin/label1_thick` 数据集实验，包含完整 AnyLabeling 数据集和按时间截取后的新子集。重点指标仍是 `mAP50`、`mAP80`、`mAP85`、`mAP90`、`mAP95`。
 
-### 9.1 yolo11l-obb 50 轮 imgsz=1280 baseline
+### 10.1 yolo11l-obb 50 轮 imgsz=1280 baseline
 
 配置：
 
@@ -298,7 +344,7 @@ missing predictions: 0
 
 结论：拆分后 `label1_thin` 的 `mAP90` 高于原 `label1` baseline，但 `label1_thick` 样本少且严格 IoU 仍弱。5-10 度样本失败率明显升高，说明角度一致性是非 label1 类别的重要问题。
 
-### 9.2 yolo11l-obb 50 轮 imgsz=1280 degrees=5
+### 10.2 yolo11l-obb 50 轮 imgsz=1280 degrees=5
 
 配置：
 
@@ -356,7 +402,7 @@ missing predictions: 0
 
 结论：`degrees=5` 改善了 5-10 度样本的固定阈值 IoU85 失败率，并提升 `label3/label5` 的 mAP85/mAP90；但它显著损伤 `label1_thin mAP90/mAP95`，且固定 `conf=0.25` 可视化下 IoU85 失败数从 146 增加到 162。因此 `degrees=5` 不适合作为默认增强强度。
 
-### 9.3 thin/thick 实验对比
+### 10.3 thin/thick 实验对比
 
 | 实验 | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 | IoU85 failed rows | failed images |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -378,7 +424,7 @@ missing predictions: 0
 - `degrees=5` 对倾斜样本和 `label3/label5` 有帮助，但对 `label1_thin` 的高 IoU 定位损伤太大。
 - 当前主要问题不是漏检，两个可视化结果 `missing predictions` 都是 0；瓶颈是框边界、角度规则和 thin/thick 边界定义在高 IoU 下不稳定。
 
-### 9.4 yolo11l-obb 50 轮 after_20260121210219803 子集训练
+### 10.4 yolo11l-obb 50 轮 after_20260121210219803 子集训练
 
 数据集：
 
@@ -450,12 +496,12 @@ matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay/match
 - 加权后的 `label1 mAP90` 从原始 `label1` baseline 的 `0.283031` 提升到 `0.430042`，说明重新截取数据源比继续调增强参数更接近根因。
 - `label3 mAP85/mAP90` 仍偏低，下一步需要结合本轮 `matches.csv` 看失败样本是否集中在少量角度或边界不一致样本。
 
-### 9.5 yolo11l-obb 50 轮 after_20260121210219803 去除 -1 样本
+### 10.5 yolo11l-obb 50 轮 after_20260121210219803 去除 -1 样本
 
 数据集：
 
 ```text
-datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test
+datasets/obb_thin_thick
 ```
 
 该数据集在 `after_20260121210219803` 子集基础上，额外去掉文件名末尾 index 为 `-1` 的样本。这样做的原因是部分 `-1` 样本在原 AnyLabeling JSON 中被写成 `label1`，但从图像语义看更接近已排除的 `other` 大框，会污染 `label1_thick`。
@@ -532,7 +578,7 @@ matches: /home/tjr/Object_detection_YOLO11_OBB/runs/analysis/iou85_overlay_yolo1
 - `label1_thin mAP90` 从 `0.469059` 降到 `0.335726`，说明拆分后 thin 类在高 IoU 阈值下仍不稳定；这可能来自样本少、边界定义细、或 thin/thick 分界规则不够贴合视觉语义。
 - 同一 cleaned 数据集上的未拆分 `label1` 对照见 9.6；对照结果显示，单一 `label1` 的整体 `all` 指标更高，但 `label1` 自身的 `mAP85/mAP90` 和 IoU85 通过率更差。
 
-### 9.6 yolo11l-obb 50 轮 no-index1 单一 label1 对照
+### 10.6 yolo11l-obb 50 轮 no-index1 单一 label1 对照
 
 数据集：
 
@@ -637,13 +683,13 @@ single label1 过 IoU85、thin/thick 未过: 1 image
 - 5 度以上倾斜样本仍是主要硬点，12 个 GT 中失败 10 个，说明瓶颈是角度和边界定位，而不是 thin/thick 分类本身。
 - 建议训练阶段保留 `label1_thin/label1_thick`。如果最终业务只需要输出单一 `label1`，更合理的方案是训练时保留 thin/thick，推理或评估后把 `label1_thin/label1_thick` 合并为 `label1`。
 
-### 9.7 已停止的 deskew / fusion 路线
+### 10.7 已停止的 deskew / fusion 路线
 
 deskew 和双模型预测级融合的历史数据、权重与结果仍保留在 `archive/` 或 `runs/`，但不再作为工程方案维护。原因是线上部署需要两个 OBB 模型并行推理，成本和复杂度不符合当前工程约束。
 
-后续模型选型统一采用单模型、相同数据划分、相同训练配置和相同 Ultralytics OBB 指标（重点比较 `mAP90`）。首个对照为 `YOLO11n-OBB`，原 `YOLO11l-OBB` baseline 权重和运行目录均保留，作为参照，不会被覆盖。
+后续模型选型统一采用单模型、相同数据划分和相同 Ultralytics OBB 指标（重点比较 `mAP90`）。当前对照为 `RHINO R50-KLD` 与 `RHINO R50-RIoU`；原 `YOLO11l-OBB` baseline 权重和运行目录均保留，作为参照，不会被覆盖。
 
-## 10. 筛选后数据统计
+## 11. 筛选后数据统计
 
 统计口径：
 
@@ -662,7 +708,7 @@ selected_json_files: 251
 runs/analysis/description_distribution_after_20260121210219803_no_index1
 ```
 
-### 10.1 label1-label6 原始标签分布
+### 11.1 label1-label6 原始标签分布
 
 原始 AnyLabeling JSON 中，`label1-label6` 完全均衡：
 
@@ -695,7 +741,7 @@ runs/analysis/description_distribution_after_20260121210219803_no_index1
 | test | 53 | 53 | 53 | 53 | 53 | 53 |
 | total | 251 | 251 | 251 | 251 | 251 | 251 |
 
-### 10.2 description 分类分布
+### 11.2 description 分类分布
 
 `description` 来自原始 AnyLabeling JSON 中每个 shape 的 `flags.description`。本表按原始 `label1-label6` 统计，`label1` 不拆 thin/thick。`EMPTY` 代表 description 为空，已计入总数。
 
@@ -735,7 +781,7 @@ description: 0空气能
 
 该项应视为 description 误填，建议后续修正为 `OK` 或正确 NG 描述。
 
-## 11. 训练日志归档
+## 12. 训练日志归档
 
 旧训练日志已经迁移到：
 

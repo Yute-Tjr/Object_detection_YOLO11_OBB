@@ -18,7 +18,7 @@ from yolo11_obb.config import (
 from yolo11_obb.runner import train
 
 
-DEFAULT_DATA = ROOT / "datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml"
+DEFAULT_DATA = ROOT / "datasets/obb_thin_thick/data.yaml"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,13 +36,13 @@ def parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="Train YOLO11-OBB.")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
-    parser.add_argument("--model", default="yolo11n-obb.pt")
+    parser.add_argument("--model", default="yolo11l-obb.pt")
     parser.add_argument("--epochs", type=int, default=150)
     parser.add_argument("--imgsz", type=int, default=1024)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default=None, help="Example: 0, cpu, or mps")
     parser.add_argument("--project", type=Path, default=Path("runs/obb"))
-    parser.add_argument("--name", default="terminal_obb_yolo11n")
+    parser.add_argument("--name", default="terminal_obb_yolo11l")
     parser.add_argument("--patience", type=int, default=30)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)

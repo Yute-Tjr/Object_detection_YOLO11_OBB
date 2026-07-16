@@ -18,7 +18,7 @@ DEFAULT_SOURCE = ROOT / "已打标的数据202604" / "user1_2026-03-16_154843_an
 DEFAULT_CONVERTED_OUTPUT = (
     ROOT / "已打标的数据202604" / "user1_2026-03-16_154843_after_20260121210219803_no_index1_obb_converted"
 )
-DEFAULT_DATASET_OUTPUT = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test"
+DEFAULT_DATASET_OUTPUT = ROOT / "datasets" / "obb_thin_thick"
 DEFAULT_AFTER_STEM = "20260121210219803"
 DEFAULT_EXCLUDE_INDICES = [1]
 

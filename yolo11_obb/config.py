@@ -45,13 +45,13 @@ class TrainOptions:
     训练需要的参数
     """
     data: Path
-    model: str = "yolo11n-obb.pt"
+    model: str = "yolo11l-obb.pt"
     epochs: int = 150
     imgsz: int = 1024
     batch: int = 8
     device: Optional[str] = None
     project: Path = Path("runs/obb")
-    name: str = "terminal_obb_yolo11n"
+    name: str = "terminal_obb_yolo11l"
     patience: int = 30
     workers: int = 4
     seed: int = 42

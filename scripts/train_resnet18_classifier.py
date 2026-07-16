@@ -106,9 +106,9 @@ def main() -> None:
         "model_selection": "best test macro_f1 on requested 8:2 split; optimistic because no separate validation split",
         "classes": train_dataset.classes,
     }
-    (run_dir / "args.yaml").write_text(yaml.safe_dump(args_payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    (run_dir / "train_args.yaml").write_text(yaml.safe_dump(args_payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
-    metrics_path = run_dir / "metrics.csv"
+    metrics_path = run_dir / "train_metrics.csv"
     best_score = -1.0
     with metrics_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -165,13 +165,13 @@ def main() -> None:
             )
 
     final_metrics, true_labels, pred_labels, image_paths = epoch_pass(model, test_loader, criterion, device)
-    with (run_dir / "predictions.csv").open("w", encoding="utf-8", newline="") as handle:
+    with (run_dir / "train_test_predictions.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["image_path", "true_label", "predicted_label"])
         writer.writeheader()
         for image_path, true_name, pred_name in zip(image_paths, true_labels, pred_labels):
             writer.writerow({"image_path": image_path, "true_label": true_name, "predicted_label": pred_name})
     counts = confusion_counts(true_labels, pred_labels, test_dataset.classes)
-    write_confusion_matrix_csv(run_dir / "confusion_matrix.csv", counts, test_dataset.classes)
+    write_confusion_matrix_csv(run_dir / "train_test_confusion_matrix.csv", counts, test_dataset.classes)
     print(f"run: {run_dir}")
     print(f"best_macro_f1: {best_score:.6f}")
     print(f"final_test_accuracy: {final_metrics['accuracy']:.6f}")

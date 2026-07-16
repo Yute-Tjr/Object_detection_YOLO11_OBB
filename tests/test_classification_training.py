@@ -8,12 +8,19 @@ if str(ROOT) not in sys.path:
 
 from yolo11_obb.classification_training import (
     classification_metrics,
+    checkpoint_run_dir,
     confusion_counts,
     discover_classes,
 )
 
 
 class ClassificationTrainingTests(unittest.TestCase):
+    def test_checkpoint_run_dir_uses_parent_of_weights_directory(self) -> None:
+        self.assertEqual(
+            checkpoint_run_dir(Path("runs/classification/label5_resnet18/weights/best.pt")),
+            Path("runs/classification/label5_resnet18"),
+        )
+
     def test_discover_classes_sorts_expected_class_names(self) -> None:
         self.assertEqual(discover_classes(["NG", "OK"]), {"NG": 0, "OK": 1})
 

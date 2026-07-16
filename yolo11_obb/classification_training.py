@@ -5,6 +5,14 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 
 
+def checkpoint_run_dir(weights_path: Path) -> Path:
+    """Return the owning classifier run directory for <run>/weights/<checkpoint>."""
+    path = Path(weights_path)
+    if path.parent.name != "weights":
+        raise ValueError(f"classifier checkpoint must be stored under a weights directory: {path}")
+    return path.parent.parent
+
+
 def discover_classes(class_names: Iterable[str]) -> Dict[str, int]:
     names = sorted(set(class_names))
     if len(names) < 2:

@@ -18,7 +18,7 @@ from yolo11_obb.pipeline_evaluate import (
 from yolo11_obb.pipeline_predict import run_pipeline
 
 
-DEFAULT_DATA = ROOT / "datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml"
+DEFAULT_DATA = ROOT / "datasets/obb_thin_thick/data.yaml"
 DEFAULT_EXCEL = ROOT / "outputs/label1_6_description.xlsx"
 
 

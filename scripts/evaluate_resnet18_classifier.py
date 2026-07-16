@@ -22,6 +22,7 @@ from yolo11_obb.classification_inference import (
     select_device,
 )
 from yolo11_obb.classification_training import (
+    checkpoint_run_dir,
     classification_metrics,
     confusion_counts,
     write_confusion_matrix_csv,
@@ -38,8 +39,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--imgsz", type=int, default=224)
     parser.add_argument("--device", default=None)
     parser.add_argument("--workers", type=int, default=0)
-    parser.add_argument("--project", type=Path, default=Path("runs/classification_eval"))
-    parser.add_argument("--name", default="label5_resnet18_eval")
+    parser.add_argument("--output-dir", type=Path, default=None, help="Defaults to the run directory owning --weights.")
+    parser.add_argument("--project", type=Path, default=None, help="Legacy override; requires --name.")
+    parser.add_argument("--name", default=None, help="Legacy output subdirectory name.")
     parser.add_argument("--exist-ok", action="store_true")
     return parser.parse_args()
 
@@ -48,10 +50,14 @@ def main() -> None:
     args = parse_args()
     data = resolve_from_root(args.data, ROOT)
     weights = resolve_from_root(args.weights, ROOT)
-    project = resolve_from_root(args.project, ROOT)
-    run_dir = project / args.name
-    if run_dir.exists() and any(run_dir.iterdir()) and not args.exist_ok:
-        raise FileExistsError(f"run directory is not empty: {run_dir}")
+    if args.output_dir is not None:
+        run_dir = resolve_from_root(args.output_dir, ROOT)
+    elif args.project is not None or args.name is not None:
+        if args.project is None or args.name is None:
+            raise ValueError("--project and --name must be used together")
+        run_dir = resolve_from_root(args.project, ROOT) / args.name
+    else:
+        run_dir = checkpoint_run_dir(weights)
     run_dir.mkdir(parents=True, exist_ok=True)
 
     device = select_device(args.device)
@@ -84,7 +90,7 @@ def main() -> None:
 
     metrics = classification_metrics(true_labels, pred_labels, classes)
     metrics["loss"] = total_loss / len(dataset)
-    with (run_dir / "metrics.csv").open("w", encoding="utf-8", newline="") as handle:
+    with (run_dir / "eval_metrics.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=["split", "loss", "accuracy", "macro_f1"])
         writer.writeheader()
         writer.writerow(
@@ -98,7 +104,7 @@ def main() -> None:
 
     rows = prediction_rows(image_paths=image_paths, class_names=classes, probabilities=probabilities)
     fieldnames = ["image_path", "true_label", "predicted_label", "confidence", *[f"prob_{name}" for name in classes]]
-    with (run_dir / "predictions.csv").open("w", encoding="utf-8", newline="") as handle:
+    with (run_dir / "eval_predictions.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         for row, true_label in zip(rows, true_labels):
@@ -106,7 +112,7 @@ def main() -> None:
             writer.writerow(row)
 
     counts = confusion_counts(true_labels, pred_labels, classes)
-    write_confusion_matrix_csv(run_dir / "confusion_matrix.csv", counts, classes)
+    write_confusion_matrix_csv(run_dir / "eval_confusion_matrix.csv", counts, classes)
     args_payload = {
         "data": str(data),
         "weights": str(weights),
@@ -119,7 +125,7 @@ def main() -> None:
         "checkpoint_score": checkpoint.get("score"),
         "classes": classes,
     }
-    (run_dir / "args.yaml").write_text(yaml.safe_dump(args_payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    (run_dir / "eval_args.yaml").write_text(yaml.safe_dump(args_payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
     print(f"run: {run_dir}")
     print(f"split: {args.split}")
     print(f"accuracy: {metrics['accuracy']:.6f}")

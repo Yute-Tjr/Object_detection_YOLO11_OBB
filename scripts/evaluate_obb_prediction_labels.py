@@ -14,8 +14,8 @@ from yolo11_obb.eval_metrics import build_custom_map_rows, write_custom_metrics_
 from yolo11_obb.prediction_label_eval import evaluate_prediction_labels_ultralytics
 
 
-DEFAULT_DATA = ROOT / "datasets" / "154843_after_20260121210219803_no_index1_label1_thin_thick_train_test" / "data.yaml"
-DEFAULT_OUTPUT = ROOT / "runs" / "fusion" / "prediction_custom_metrics.csv"
+DEFAULT_DATA = ROOT / "datasets" / "obb_thin_thick" / "data.yaml"
+DEFAULT_OUTPUT = ROOT / "runs" / "obb" / "prediction_custom_metrics.csv"
 
 
 def parse_args() -> argparse.Namespace:
