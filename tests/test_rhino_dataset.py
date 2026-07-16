@@ -53,7 +53,9 @@ class RhinoDatasetTests(unittest.TestCase):
 
             self.assertEqual(report.images_by_split, {"train": 1, "test": 1})
             self.assertEqual(report.objects_by_split, {"train": 1, "test": 1})
-            self.assertTrue((output / "train" / "images" / "sample_train.bmp").exists())
+            self.assertEqual(report.image_format, "png")
+            self.assertTrue((output / "train" / "images" / "sample_train.png").exists())
+            self.assertFalse((output / "train" / "images" / "sample_train.bmp").exists())
             self.assertEqual(
                 (output / "test" / "annfiles" / "sample_test.txt").read_text(encoding="utf-8"),
                 "10.0000 8.0000 50.0000 8.0000 50.0000 32.0000 10.0000 32.0000 label1_thick 0\n",

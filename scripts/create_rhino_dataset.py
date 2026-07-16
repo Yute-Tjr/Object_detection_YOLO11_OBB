@@ -17,7 +17,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Convert the main YOLO-OBB dataset to RHINO DOTA annfiles.")
     parser.add_argument("--data", type=Path, default=Path("datasets/obb_thin_thick/data.yaml"))
     parser.add_argument("--output", type=Path, default=Path("datasets/rhino_obb"))
-    parser.add_argument("--copy-images", action="store_true", help="Copy images instead of hard-linking them.")
     return parser.parse_args()
 
 
@@ -25,9 +24,9 @@ def main() -> None:
     args = parse_args()
     data = resolve_from_root(args.data, ROOT)
     output = resolve_from_root(args.output, ROOT)
-    report = create_rhino_dataset(data, output, image_mode="copy" if args.copy_images else "link")
+    report = create_rhino_dataset(data, output)
     print(f"dataset: {report.output}")
-    print(f"image_mode: {report.image_mode}")
+    print(f"image_format: {report.image_format}")
     for split in ("train", "test"):
         print(f"{split}: images={report.images_by_split[split]} objects={report.objects_by_split[split]}")
 

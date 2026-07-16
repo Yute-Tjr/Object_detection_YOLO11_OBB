@@ -88,7 +88,7 @@ python3 scripts/predict_yolo11_obb.py \
 
 ## 8. RHINO R50 对比实验
 
-`datasets/rhino_obb` 由 `datasets/obb_thin_thick` 转换而来，图像和 train/test 划分不变，只将 YOLO OBB 归一化四点标注转换为 RHINO/MMRotate 的 DOTA 四点 annfile 格式：198 张训练图像、53 张测试图像、1188/318 个实例。
+`datasets/rhino_obb` 由 `datasets/obb_thin_thick` 转换而来，train/test 划分不变；图像会从 BMP 转为 RHINO DOTA loader 固定要求的 PNG，标注从 YOLO OBB 归一化四点格式转换为 DOTA 四点 annfile 格式：198 张训练图像、53 张测试图像、1188/318 个实例。
 
 ```bash
 python3 scripts/create_rhino_dataset.py \

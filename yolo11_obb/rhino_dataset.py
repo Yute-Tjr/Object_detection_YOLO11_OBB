@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import csv
-import os
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Union
@@ -18,7 +16,7 @@ class RhinoDatasetReport:
     output: Path
     images_by_split: Dict[str, int]
     objects_by_split: Dict[str, int]
-    image_mode: str
+    image_format: str
 
 
 def _label_dir(image_dir: Path) -> Path:
@@ -29,16 +27,9 @@ def _image_paths(image_dir: Path) -> Iterable[Path]:
     return sorted(path for path in image_dir.iterdir() if path.is_file())
 
 
-def _link_or_copy(source: Path, destination: Path, mode: str) -> None:
-    if mode not in {"link", "copy"}:
-        raise ValueError("image_mode must be 'link' or 'copy'")
-    if mode == "copy":
-        shutil.copy2(source, destination)
-        return
-    try:
-        os.link(source, destination)
-    except OSError:
-        shutil.copy2(source, destination)
+def _write_png(image, destination: Path) -> None:
+    if not cv2.imwrite(str(destination), image):
+        raise ValueError(f"failed to write PNG image: {destination}")
 
 
 def _dota_lines(label_path: Path, width: int, height: int, names: Dict[int, str]) -> List[str]:
@@ -66,7 +57,7 @@ def _prepare_output(output: Path) -> None:
     output.mkdir(parents=True, exist_ok=True)
 
 
-def _convert_split(dataset: DatasetConfig, split: str, output: Path, image_mode: str) -> tuple[int, int, List[dict]]:
+def _convert_split(dataset: DatasetConfig, split: str, output: Path) -> tuple[int, int, List[dict]]:
     image_dir = dataset.splits[split]
     label_dir = _label_dir(image_dir)
     destination_images = output / split / "images"
@@ -84,7 +75,8 @@ def _convert_split(dataset: DatasetConfig, split: str, output: Path, image_mode:
         height, width = image.shape[:2]
         label_path = label_dir / f"{image_path.stem}.txt"
         lines = _dota_lines(label_path, width, height, dataset.names)
-        _link_or_copy(image_path, destination_images / image_path.name, image_mode)
+        target_image = destination_images / f"{image_path.stem}.png"
+        _write_png(image, target_image)
         (destination_labels / f"{image_path.stem}.txt").write_text(
             "\n".join(lines) + ("\n" if lines else ""),
             encoding="utf-8",
@@ -94,7 +86,7 @@ def _convert_split(dataset: DatasetConfig, split: str, output: Path, image_mode:
         manifest_rows.append(
             {
                 "split": split,
-                "image": image_path.name,
+                "image": target_image.name,
                 "source_image": str(image_path),
                 "source_label": str(label_path),
                 "objects": len(lines),
@@ -106,9 +98,8 @@ def _convert_split(dataset: DatasetConfig, split: str, output: Path, image_mode:
 def create_rhino_dataset(
     source_data: Union[str, Path],
     output: Union[str, Path],
-    image_mode: str = "link",
 ) -> RhinoDatasetReport:
-    """Convert the current YOLO-OBB train/test split to RHINO's DOTA annfile layout."""
+    """Convert YOLO-OBB labels and source images to RHINO's PNG DOTA layout."""
     dataset = load_dataset_config(source_data)
     output_path = Path(output).expanduser().resolve()
     _prepare_output(output_path)
@@ -117,7 +108,7 @@ def create_rhino_dataset(
     objects_by_split: Dict[str, int] = {}
     manifest_rows: List[dict] = []
     for split in ("train", "test"):
-        images, objects, rows = _convert_split(dataset, split, output_path, image_mode)
+        images, objects, rows = _convert_split(dataset, split, output_path)
         images_by_split[split] = images
         objects_by_split[split] = objects
         manifest_rows.extend(rows)
@@ -138,7 +129,7 @@ def create_rhino_dataset(
             [
                 "format: DOTA-style quadrilateral annfiles for RHINO/MMRotate",
                 f"source_data: {dataset.data_yaml}",
-                f"image_mode: {image_mode}",
+                "image_format: png",
                 f"train_images: {images_by_split['train']}",
                 f"test_images: {images_by_split['test']}",
                 f"train_objects: {objects_by_split['train']}",
@@ -152,5 +143,5 @@ def create_rhino_dataset(
         output=output_path,
         images_by_split=images_by_split,
         objects_by_split=objects_by_split,
-        image_mode=image_mode,
+        image_format="png",
     )
