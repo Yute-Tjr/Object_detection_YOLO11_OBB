@@ -1,5 +1,0 @@
-source_data: /Users/tongjiarui/Documents/目标检测/datasets/154843_after_20260121210219803_no_index1_label1_thin_thick_train_test/data.yaml
-output: /Users/tongjiarui/Documents/目标检测/datasets/154843_after_20260121210219803_no_index1_deskewed_label1_thin_thick_train_test
-angle_class_ids: 2,3,4,5,6
-test: {'images': 53, 'labels': 53, 'objects': 318, 'mean_abs_angle': 0.3963010212134061}
-train: {'images': 198, 'labels': 198, 'objects': 1188, 'mean_abs_angle': 0.414150758486014}

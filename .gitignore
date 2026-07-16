@@ -58,3 +58,5 @@ __pycache__/
 /outputs/.DS_Store
 /archive/datasets_legacy/154843_after_20260121210219803_label1_thin_thick_train_test/.DS_Store
 /archive/datasets_legacy/154843_after_20260121210219803_label1_thin_thick_train_test/images/.DS_Store
+/archive/
+
