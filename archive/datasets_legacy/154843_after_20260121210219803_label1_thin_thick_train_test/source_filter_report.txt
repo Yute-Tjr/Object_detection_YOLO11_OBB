@@ -1,9 +1,0 @@
-source: /Users/tongjiarui/Documents/目标检测/已打标的数据202604/user1_2026-03-16_154843_anylabeling
-converted_output: /Users/tongjiarui/Documents/目标检测/已打标的数据202604/user1_2026-03-16_154843_after_20260121210219803_obb_converted
-dataset_output: /Users/tongjiarui/Documents/目标检测/datasets/154843_after_20260121210219803_label1_thin_thick_train_test
-after_stem: 20260121210219803
-after_key: ('20260121210219803', 999)
-selected_json_files: 273
-top_edge_threshold_px: 164.0
-train_ratio: 0.8
-seed: 42
