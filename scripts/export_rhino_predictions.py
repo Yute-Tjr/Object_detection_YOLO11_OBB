@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from yolo11_obb.config import load_dataset_config, resolve_from_root
-from yolo11_obb.rhino_prediction import rboxes_to_yolo_lines
+from yolo11_obb.rhino_prediction import index_images_by_stem, rboxes_to_yolo_lines
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
@@ -73,14 +73,15 @@ def main() -> None:
     predictions_path = resolve_from_root(args.predictions, ROOT)
     output = resolve_from_root(args.output, ROOT)
     dataset = load_dataset_config(data_yaml)
-    image_paths = {path.name: path for path in dataset.splits[args.split].iterdir() if path.is_file()}
+    image_paths = index_images_by_stem(path for path in dataset.splits[args.split].iterdir() if path.is_file())
     with predictions_path.open("rb") as handle:
         samples = _prediction_samples(pickle.load(handle))
     output.mkdir(parents=True, exist_ok=True)
     written = 0
     for sample in samples:
-        image_name = _sample_path(sample).name
-        image_path = image_paths.get(image_name)
+        prediction_image = _sample_path(sample)
+        image_name = prediction_image.name
+        image_path = image_paths.get(prediction_image.stem)
         if image_path is None:
             raise ValueError(f"prediction image is outside dataset split {args.split}: {image_name}")
         image = cv2.imread(str(image_path))

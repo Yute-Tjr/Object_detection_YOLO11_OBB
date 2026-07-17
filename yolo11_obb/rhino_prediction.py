@@ -1,7 +1,18 @@
 from __future__ import annotations
 
 from math import cos, sin
-from typing import Iterable, List, Sequence, Tuple
+from pathlib import Path
+from typing import Dict, Iterable, List, Sequence, Tuple
+
+
+def index_images_by_stem(image_paths: Iterable[Path]) -> Dict[str, Path]:
+    indexed: Dict[str, Path] = {}
+    for image_path in image_paths:
+        stem = image_path.stem
+        if stem in indexed:
+            raise ValueError(f"duplicate image stem {stem!r}: {indexed[stem]} and {image_path}")
+        indexed[stem] = image_path
+    return indexed
 
 
 def rbox_to_corners(rbox: Sequence[float]) -> List[Tuple[float, float]]:

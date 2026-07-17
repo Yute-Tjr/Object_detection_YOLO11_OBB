@@ -1,9 +1,24 @@
+import tempfile
 import unittest
+from pathlib import Path
 
-from yolo11_obb.rhino_prediction import rbox_to_corners, rboxes_to_yolo_lines
+from yolo11_obb.rhino_prediction import index_images_by_stem, rbox_to_corners, rboxes_to_yolo_lines
 
 
 class RhinoPredictionTests(unittest.TestCase):
+    def test_index_images_by_stem_matches_across_file_extensions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            image_path = Path(tmp) / "sample.bmp"
+            image_path.touch()
+
+            indexed = index_images_by_stem([image_path])
+
+            self.assertEqual(indexed[Path("sample.png").stem], image_path)
+
+    def test_index_images_by_stem_rejects_duplicate_stems(self) -> None:
+        with self.assertRaises(ValueError):
+            index_images_by_stem([Path("sample.bmp"), Path("sample.png")])
+
     def test_rbox_to_corners_converts_center_width_height_angle(self) -> None:
         corners = rbox_to_corners([50.0, 40.0, 40.0, 20.0, 0.0])
 
