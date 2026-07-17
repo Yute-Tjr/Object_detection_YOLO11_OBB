@@ -16,6 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--split", choices=["train", "val", "test"], default="test")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--min-conf", type=float, default=0.001)
+    parser.add_argument(
+        "--metric-python",
+        type=Path,
+        default=None,
+        help="Python interpreter containing ultralytics; defaults to the current interpreter.",
+    )
     return parser.parse_args()
 
 
@@ -30,8 +36,9 @@ def main() -> None:
         "--data", str(args.data), "--predictions", str(args.predictions), "--split", args.split,
         "--output", str(labels), "--min-conf", str(args.min_conf),
     ]
+    metric_python = str(args.metric_python.expanduser().resolve()) if args.metric_python else sys.executable
     metric_command = [
-        sys.executable, str(ROOT / "scripts/evaluate_obb_prediction_labels.py"),
+        metric_python, str(ROOT / "scripts/evaluate_obb_prediction_labels.py"),
         "--data", str(args.data), "--pred-labels", str(labels), "--split", args.split,
         "--output", str(metrics),
     ]
