@@ -22,6 +22,7 @@ class RhinoConfigTests(unittest.TestCase):
         self.assertIn("max_epochs = 50", config)
         self.assertIn("loss_type='kld'", config)
         self.assertIn("ann_file='train/annfiles/'", config)
+        self.assertIn("test_evaluator = dict(_delete_=True", config)
 
     def test_riou_config_replaces_kld_matching_and_regression(self) -> None:
         config = render_rhino_config(

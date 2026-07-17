@@ -77,8 +77,8 @@ val_dataloader = dict(
                  metainfo=metainfo, img_shape=({imgsz}, {imgsz}), test_mode=True, pipeline=test_pipeline),
 )
 test_dataloader = val_dataloader
-val_evaluator = dict(type='DOTAMetric', metric='mAP', iou_thr=0.5)
-test_evaluator = val_evaluator
+val_evaluator = dict(_delete_=True, type='DOTAMetric', metric='mAP', iou_thr=0.5)
+test_evaluator = dict(_delete_=True, type='DOTAMetric', metric='mAP', iou_thr=0.5)
 
 model = dict(
     bbox_head=dict(num_classes={len(class_names)}, loss_iou={regression}),
