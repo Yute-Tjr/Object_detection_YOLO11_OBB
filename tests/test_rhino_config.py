@@ -36,6 +36,7 @@ class RhinoConfigTests(unittest.TestCase):
             workers=4,
         )
 
+        self.assertIn("_delete_=True, type='RotatedIoULoss'", config)
         self.assertIn("type='RotatedIoULoss'", config)
         self.assertIn("type='RotatedIoUCost'", config)
         self.assertNotIn("loss_type='kld'", config)
