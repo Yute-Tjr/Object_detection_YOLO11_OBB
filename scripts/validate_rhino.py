@@ -30,7 +30,19 @@ def main() -> None:
     work_dir = args.work_dir.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     work_dir.mkdir(parents=True, exist_ok=True)
-    command = [args.python, str(test_tool), str(config), str(weights), "--out", str(output), "--work-dir", str(work_dir)]
+    command = [
+        args.python,
+        str(test_tool),
+        str(config),
+        str(weights),
+        "--out",
+        str(output),
+        "--work-dir",
+        str(work_dir),
+        "--cfg-options",
+        "test_evaluator.format_only=False",
+        "test_evaluator.merge_patches=False",
+    ]
     (work_dir / "validate_command.txt").write_text(" ".join(command) + "\n", encoding="utf-8")
     subprocess.run(command, cwd=rhino_root, check=True)
 
