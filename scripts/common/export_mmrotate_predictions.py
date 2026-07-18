@@ -5,7 +5,7 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -14,7 +14,9 @@ from yolo11_obb.config import IMAGE_EXTENSIONS, load_dataset_config, resolve_fro
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert RHINO/MMRotate pickle predictions to YOLO-OBB labels.")
+    parser = argparse.ArgumentParser(
+        description="Convert MMRotate prediction pickle samples to YOLO OBB label files."
+    )
     parser.add_argument("--data", type=Path, default=Path("datasets/obb_thin_thick/data.yaml"))
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--split", choices=["train", "val", "test"], default="test")
@@ -26,7 +28,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     data_yaml = resolve_from_root(args.data, ROOT)
-    predictions_path = resolve_from_root(args.predictions, ROOT)
+    predictions = resolve_from_root(args.predictions, ROOT)
     output = resolve_from_root(args.output, ROOT)
     dataset = load_dataset_config(data_yaml)
     image_paths = [
@@ -35,7 +37,7 @@ def main() -> None:
         if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     ]
     written = export_mmrotate_predictions(
-        predictions_path=predictions_path,
+        predictions_path=predictions,
         image_paths=image_paths,
         output_dir=output,
         min_conf=args.min_conf,
@@ -46,3 +48,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,201 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Sequence
+
+
+DEFAULT_BASE_CONFIG = Path(
+    "configs/oriented_rcnn/oriented-rcnn-le90_r50_fpn_1x_dota.py"
+)
+
+
+def _quoted(value: str | Path) -> str:
+    return str(value).replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _python_tuple(values: Sequence[str]) -> str:
+    escaped = [_quoted(value) for value in values]
+    suffix = "," if len(escaped) == 1 else ""
+    return "(" + ", ".join(f"'{value}'" for value in escaped) + suffix + ")"
+
+
+def find_base_config(mmrotate_root: Path, base_config: Path | None = None) -> Path:
+    """Resolve the supported MMRotate 1.x Oriented R-CNN base config."""
+    root = mmrotate_root.expanduser().resolve()
+    candidate = base_config or DEFAULT_BASE_CONFIG
+    candidate = candidate.expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    candidate = candidate.resolve()
+    if not candidate.is_file():
+        raise FileNotFoundError(
+            "Oriented R-CNN base config not found: "
+            f"{candidate}. Use MMRotate 1.x or pass --base-config explicitly."
+        )
+    return candidate
+
+
+def load_class_names(data_root: Path) -> list[str]:
+    classes_path = data_root.expanduser().resolve() / "classes.txt"
+    if not classes_path.is_file():
+        raise FileNotFoundError(
+            f"DOTA classes file not found: {classes_path}; "
+            "run scripts/create_rhino_dataset.py first"
+        )
+    names = [
+        line.strip()
+        for line in classes_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not names:
+        raise ValueError(f"no class names found in {classes_path}")
+    if len(names) != len(set(names)):
+        raise ValueError(f"duplicate class names found in {classes_path}")
+    return names
+
+
+def validate_dota_dataset(
+    data_root: Path,
+    train_split: str = "train",
+    val_split: str = "test",
+    test_split: str = "test",
+) -> dict[str, tuple[int, int]]:
+    """Validate the DOTA-style directories consumed by MMRotate."""
+    root = data_root.expanduser().resolve()
+    report: dict[str, tuple[int, int]] = {}
+    for split in dict.fromkeys((train_split, val_split, test_split)):
+        image_dir = root / split / "images"
+        ann_dir = root / split / "annfiles"
+        if not image_dir.is_dir() or not ann_dir.is_dir():
+            raise FileNotFoundError(
+                f"invalid DOTA split {split!r}: expected {image_dir} and {ann_dir}"
+            )
+        images = {
+            path.stem
+            for path in image_dir.iterdir()
+            if path.is_file() and path.suffix.lower() in {".bmp", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+        }
+        annotations = {path.stem for path in ann_dir.glob("*.txt")}
+        if images != annotations:
+            missing_ann = sorted(images - annotations)[:5]
+            missing_images = sorted(annotations - images)[:5]
+            raise ValueError(
+                f"DOTA split {split!r} is inconsistent: "
+                f"missing annotations={missing_ann}, missing images={missing_images}"
+            )
+        if not images:
+            raise ValueError(f"DOTA split {split!r} is empty: {image_dir}")
+        report[split] = (len(images), len(annotations))
+    load_class_names(root)
+    return report
+
+
+def render_oriented_rcnn_config(
+    *,
+    base_config: Path,
+    data_root: Path,
+    class_names: Sequence[str],
+    imgsz: int = 1280,
+    epochs: int = 50,
+    batch: int = 2,
+    workers: int = 4,
+    learning_rate: float = 0.005,
+    flip_prob: float = 0.75,
+    train_split: str = "train",
+    val_split: str = "test",
+    test_split: str = "test",
+    checkpoint_interval: int = 1,
+    max_keep_ckpts: int = 10,
+) -> str:
+    """Render a small override config on top of MMRotate 1.x."""
+    if imgsz <= 0 or epochs <= 0 or batch <= 0:
+        raise ValueError("imgsz, epochs and batch must be positive")
+    if workers < 0:
+        raise ValueError("workers must be non-negative")
+    if learning_rate <= 0:
+        raise ValueError("learning_rate must be positive")
+    if not 0.0 <= flip_prob <= 1.0:
+        raise ValueError("flip_prob must be between 0 and 1")
+    if checkpoint_interval <= 0 or max_keep_ckpts <= 0:
+        raise ValueError("checkpoint settings must be positive")
+    if not class_names:
+        raise ValueError("at least one class name is required")
+
+    milestones = sorted({max(1, round(epochs * 0.80)), max(1, round(epochs * 0.92))})
+    if len(milestones) == 1:
+        milestones.append(max(1, epochs - 1))
+        milestones = sorted(set(milestones))
+    classes = _python_tuple(list(class_names))
+    root_text = _quoted(data_root.expanduser().resolve()) + "/"
+    base_text = _quoted(base_config.expanduser().resolve())
+    persistent_workers = "True" if workers > 0 else "False"
+
+    return f'''# Generated by scripts/models/oriented_rcnn/train.py. Do not edit manually.
+_base_ = r'{base_text}'
+
+classes = {classes}
+metainfo = dict(classes=classes)
+data_root = r'{root_text}'
+max_epochs = {epochs}
+
+train_pipeline = [
+    dict(type='mmdet.LoadImageFromFile'),
+    dict(type='mmdet.LoadAnnotations', with_bbox=True, box_type='qbox'),
+    dict(type='ConvertBoxType', box_type_mapping=dict(gt_bboxes='rbox')),
+    dict(type='mmdet.Resize', scale=({imgsz}, {imgsz}), keep_ratio=True),
+    dict(type='mmdet.RandomFlip', prob={flip_prob!r}, direction=['horizontal', 'vertical', 'diagonal']),
+    dict(type='mmdet.PackDetInputs'),
+]
+test_pipeline = [
+    dict(type='mmdet.LoadImageFromFile'),
+    dict(type='mmdet.Resize', scale=({imgsz}, {imgsz}), keep_ratio=True),
+    dict(type='mmdet.LoadAnnotations', with_bbox=True, box_type='qbox'),
+    dict(type='ConvertBoxType', box_type_mapping=dict(gt_bboxes='rbox')),
+    dict(type='mmdet.PackDetInputs', meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape', 'scale_factor')),
+]
+
+train_dataloader = dict(
+    batch_size={batch}, num_workers={workers}, persistent_workers={persistent_workers},
+    dataset=dict(
+        type='DOTADataset', data_root=data_root,
+        ann_file='{_quoted(train_split)}/annfiles/',
+        data_prefix=dict(img_path='{_quoted(train_split)}/images/'),
+        metainfo=metainfo, filter_cfg=dict(filter_empty_gt=False), pipeline=train_pipeline,
+    ),
+)
+val_dataloader = dict(
+    batch_size=1, num_workers={workers}, persistent_workers={persistent_workers}, drop_last=False,
+    dataset=dict(
+        type='DOTADataset', data_root=data_root,
+        ann_file='{_quoted(val_split)}/annfiles/',
+        data_prefix=dict(img_path='{_quoted(val_split)}/images/'),
+        metainfo=metainfo, test_mode=True, pipeline=test_pipeline,
+    ),
+)
+test_dataloader = dict(
+    batch_size=1, num_workers={workers}, persistent_workers={persistent_workers}, drop_last=False,
+    dataset=dict(
+        type='DOTADataset', data_root=data_root,
+        ann_file='{_quoted(test_split)}/annfiles/',
+        data_prefix=dict(img_path='{_quoted(test_split)}/images/'),
+        metainfo=metainfo, test_mode=True, pipeline=test_pipeline,
+    ),
+)
+val_evaluator = dict(_delete_=True, type='DOTAMetric', metric='mAP', iou_thr=0.5)
+test_evaluator = dict(_delete_=True, type='DOTAMetric', metric='mAP', iou_thr=0.5)
+
+model = dict(roi_head=dict(bbox_head=dict(num_classes={len(class_names)})))
+train_cfg = dict(type='EpochBasedTrainLoop', max_epochs=max_epochs, val_interval=1)
+param_scheduler = [
+    dict(type='LinearLR', start_factor=0.333333, by_epoch=False, begin=0, end=500),
+    dict(type='MultiStepLR', begin=0, end=max_epochs, by_epoch=True, milestones={milestones}, gamma=0.1),
+]
+optim_wrapper = dict(optimizer=dict(lr={learning_rate!r}))
+default_hooks = dict(
+    checkpoint=dict(
+        type='CheckpointHook', interval={checkpoint_interval},
+        save_best='dota/mAP', rule='greater', max_keep_ckpts={max_keep_ckpts},
+    )
+)
+'''
+

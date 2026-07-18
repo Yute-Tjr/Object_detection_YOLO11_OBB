@@ -50,18 +50,36 @@ deskew 数据和权重只作为历史实验归档，不应与当前 `obb_thin_th
 
 这样可避免把 RHINO 的原生 AP50 与 YOLO 的 mAP80/mAP85/mAP90/mAP95 混为一谈。
 
-## 4. RHINO KLD 首轮结论
+## 4. RHINO checkpoint 对比
 
-RHINO R50-KLD epoch40 在当前 test split 上：
+所有结果使用相同 test split 和统一 Ultralytics OBB 指标：
 
-| model | mAP80 | mAP85 | mAP90 | mAP95 |
-| --- | ---: | ---: | ---: | ---: |
-| YOLO11l-OBB | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
-| RHINO R50-KLD epoch40 | 0.923683 | 0.830400 | 0.648533 | 0.211504 |
+### 4.1 KLD 与 baseline
 
-RHINO 改善了 `label1_thin`、`label3` 和 `label5` 的 mAP90，也提高了整体 mAP95；但 `label1_thick` mAP90 从 0.643462 降至 0.082473，导致整体 mAP90 低于 YOLO11l。
+| model | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| YOLO11l-OBB | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
+| RHINO KLD epoch40 | 0.991563 | 0.998104 | 0.994762 | 0.923683 | 0.830400 | 0.648533 | 0.211504 |
+| RHINO KLD epoch50 | 0.992294 | 0.994560 | 0.994921 | 0.927507 | 0.828269 | 0.623374 | 0.226096 |
 
-epoch40 是按训练阶段 AP50 选出的权重，不一定是 mAP90 最佳 checkpoint。因此 `epoch_50.pth` 仍需要按同一流程评估，才能确认 checkpoint 选择是否影响结论。
+- KLD epoch40 的 mAP90 比 KLD epoch50 高 0.025159，因此 KLD 保留 epoch40 作为高 IoU 代表。
+- 两个 KLD checkpoint 的整体 mAP90 都没有超过 YOLO11l。
+
+### 4.2 RIoU 与 baseline
+
+| model | precision | recall | mAP50 | mAP80 | mAP85 | mAP90 | mAP95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| YOLO11l-OBB | 0.997159 | 0.999863 | 0.995000 | 0.962807 | 0.894190 | 0.711124 | 0.183112 |
+| RHINO RIoU AP50-best | 0.985410 | 0.995654 | 0.995000 | 0.911655 | 0.788412 | 0.596849 | 0.163323 |
+| RHINO RIoU epoch50 | 0.992466 | 0.991982 | 0.994948 | 0.959565 | 0.878536 | 0.659244 | 0.264438 |
+
+- RIoU epoch50 的 mAP90 比其 AP50-best 高 0.062395，mAP95 高 0.101115，因此 RIoU 保留 epoch50 作为高 IoU 代表。
+- RIoU epoch50 是当前最好的 RHINO checkpoint，但 mAP90 仍比 YOLO11l 低 0.051880。
+- RIoU epoch50 的 mAP95 比 YOLO11l 高 0.081326，说明其在一部分目标上能产生更严格贴合的框，但类别稳定性和整体 mAP90 仍不足。
+
+### 4.3 checkpoint 选择结论
+
+- `best_dota_mAP` 只代表 AP50 最佳。后续 RHINO 训练需要同时评估最后若干 epoch，不能用该文件名直接决定最终权重。
 
 ## 5. 当前模型选择原则
 

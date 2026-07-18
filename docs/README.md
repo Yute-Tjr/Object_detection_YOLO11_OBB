@@ -2,6 +2,12 @@
 
 当前可复现的目标检测流程、模型结论和统一指标见项目根目录的 [README](../README.md)。本目录按项目阶段保存历史背景，避免早期安装记录、数据实验和当前结论混在同一份文档中。
 
+## 当前代码结构
+
+- [代码架构、兼容策略与 Oriented R-CNN 入口](architecture.md)
+
+说明新的 `obb_detection` 包、按模型分类的命令目录，以及为什么暂时保留 `yolo11_obb` 兼容层。
+
 ## 阶段一：环境与运行方式
 
 - [环境、脚本入口与产物约定](archive/01_environment_and_workflows.md)
