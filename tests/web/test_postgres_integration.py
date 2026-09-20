@@ -3,7 +3,7 @@ import unittest
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import create_engine, delete
+from sqlalchemy import create_engine, delete, text
 from sqlalchemy.orm import sessionmaker
 
 from terminal_web.database import Base
@@ -19,13 +19,23 @@ from terminal_web.queue import claim_next_task
 class PostgreSQLQueueIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.engine = create_engine(os.environ["TEST_DATABASE_URL"])
+        cls.schema_name = f"terminal_test_{uuid.uuid4().hex}"
+        cls.admin_engine = create_engine(os.environ["TEST_DATABASE_URL"])
+        with cls.admin_engine.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA "{cls.schema_name}"'))
+        cls.engine = create_engine(
+            os.environ["TEST_DATABASE_URL"],
+            connect_args={"options": f"-csearch_path={cls.schema_name}"},
+        )
         Base.metadata.create_all(cls.engine)
         cls.sessions = sessionmaker(bind=cls.engine, expire_on_commit=False)
 
     @classmethod
     def tearDownClass(cls):
         cls.engine.dispose()
+        with cls.admin_engine.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA IF EXISTS "{cls.schema_name}" CASCADE'))
+        cls.admin_engine.dispose()
 
     def test_skip_locked_allows_only_one_worker_to_claim_a_task(self):
         task_id = uuid.uuid4()
@@ -57,3 +67,7 @@ class PostgreSQLQueueIntegrationTest(unittest.TestCase):
             with self.sessions() as cleanup:
                 cleanup.execute(delete(InspectionTask).where(InspectionTask.id == task_id))
                 cleanup.commit()
+
+    def test_database_objects_are_isolated_from_public_schema(self):
+        with self.engine.connect() as connection:
+            self.assertNotEqual(connection.scalar(text("SELECT current_schema()")), "public")
