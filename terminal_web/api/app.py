@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
@@ -7,6 +9,9 @@ from terminal_web.config import get_settings
 from terminal_web.database import build_session_factory
 from terminal_web.readiness import ReadinessStore
 from terminal_web.storage import ArtifactStorage
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -38,6 +43,11 @@ def create_app(
     async def database_error_handler(
         request: Request, exc: SQLAlchemyError
     ) -> JSONResponse:
+        logger.exception(
+            "database request failed path=%s",
+            request.url.path,
+            exc_info=exc,
+        )
         return JSONResponse(
             status_code=503,
             content={"detail": "database is unavailable"},

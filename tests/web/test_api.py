@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool, StaticPool
 
 from terminal_web.api.app import create_app
 from terminal_web.database import Base
@@ -213,3 +213,29 @@ class ApiTest(unittest.TestCase):
 
         response = self.client.post(f"/api/v1/images/{image_id}/retry")
         self.assertEqual(response.status_code, 409)
+
+    def test_repeated_reads_return_queue_connections(self):
+        engine = create_engine(
+            f"sqlite+pysqlite:///{Path(self.temp.name) / 'pool-test.sqlite'}",
+            connect_args={"check_same_thread": False},
+            poolclass=QueuePool,
+            pool_size=2,
+            max_overflow=0,
+        )
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        app = create_app(
+            settings=SimpleNamespace(max_images_per_task=100),
+            session_factory=session_factory,
+            storage=self.storage,
+            readiness=self.readiness,
+        )
+
+        try:
+            with TestClient(app) as client:
+                for _ in range(30):
+                    response = client.get("/api/v1/tasks?status=all")
+                    self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(engine.pool.checkedout(), 0)
+        finally:
+            engine.dispose()

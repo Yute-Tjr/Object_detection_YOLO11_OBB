@@ -1,4 +1,4 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 from typing import Annotated, Protocol
 
 from fastapi import Depends, Request
@@ -14,11 +14,16 @@ class ReadinessProvider(Protocol):
         ...
 
 
-def get_session(request: Request) -> Generator[Session, None, None]:
+async def get_session(request: Request) -> AsyncGenerator[Session, None]:
     session = request.app.state.session_factory()
     try:
         yield session
+    except BaseException:
+        session.rollback()
+        raise
     finally:
+        if session.in_transaction():
+            session.rollback()
         session.close()
 
 
