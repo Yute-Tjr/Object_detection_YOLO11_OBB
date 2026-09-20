@@ -90,3 +90,5 @@ export const apiClient = {
     });
   },
 };
+
+export type ApiClient = typeof apiClient;
