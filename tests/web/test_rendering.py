@@ -1,0 +1,107 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from terminal_web.domain import OverallResult
+from terminal_web.inference.rendering import (
+    NG_COLOR,
+    OK_COLOR,
+    UNSUPPORTED_COLOR,
+    format_region_label,
+    render_prediction,
+)
+from terminal_web.inference.types import (
+    ClassificationPrediction,
+    ImagePrediction,
+    RegionPrediction,
+)
+
+
+def classification(label: str) -> ClassificationPrediction:
+    return ClassificationPrediction(label, 0.95, {label: 0.95})
+
+
+def region(
+    label: str,
+    points,
+    *,
+    anomaly=None,
+    color=None,
+    selected=True,
+    error=None,
+) -> RegionPrediction:
+    return RegionPrediction(
+        region_label=label,
+        detection_confidence=0.9,
+        points=points,
+        selected_for_classification=selected,
+        anomaly=anomaly,
+        color=color,
+        crop_path=None,
+        error=error,
+    )
+
+
+class RenderingTest(unittest.TestCase):
+    def test_format_labels_match_factory_semantics(self):
+        square = ((0, 0), (10, 0), (10, 10), (0, 10))
+        self.assertEqual(
+            format_region_label(region("label3", square, anomaly=classification("OK"))),
+            "label3 · OK",
+        )
+        self.assertEqual(
+            format_region_label(
+                region(
+                    "label5",
+                    square,
+                    anomaly=classification("NG"),
+                    color=classification("蓝色"),
+                )
+            ),
+            "label5 · NG · 蓝色",
+        )
+        self.assertEqual(
+            format_region_label(region("label2", square, selected=False)),
+            "label2 · 暂不支持分类",
+        )
+        self.assertEqual(
+            format_region_label(region("label3", square, error="failed")),
+            "label3 · 分类失败",
+        )
+
+    def test_border_pixels_use_green_red_and_gray(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.png"
+            output = root / "result.png"
+            self.assertTrue(
+                cv2.imwrite(str(source), np.full((160, 180, 3), 255, np.uint8))
+            )
+            regions = (
+                region(
+                    "label3",
+                    ((10, 10), (60, 10), (60, 50), (10, 50)),
+                    anomaly=classification("OK"),
+                ),
+                region(
+                    "label5",
+                    ((90, 10), (150, 10), (150, 50), (90, 50)),
+                    anomaly=classification("NG"),
+                ),
+                region(
+                    "label2",
+                    ((10, 90), (60, 90), (60, 140), (10, 140)),
+                    selected=False,
+                ),
+            )
+            prediction = ImagePrediction(regions, OverallResult.ng, ())
+
+            render_prediction(source, prediction, output)
+
+            rendered = cv2.imread(str(output))
+            self.assertEqual(tuple(rendered[50, 35]), OK_COLOR)
+            self.assertEqual(tuple(rendered[50, 120]), NG_COLOR)
+            self.assertEqual(tuple(rendered[140, 35]), UNSUPPORTED_COLOR)

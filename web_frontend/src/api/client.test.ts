@@ -1,0 +1,71 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { apiClient } from "./client";
+
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+
+describe("apiClient", () => {
+  it("creates multipart tasks without setting a content-type boundary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "task-1" }), {
+        status: 202,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const file = new File(["image"], "terminal.png", { type: "image/png" });
+
+    await apiClient.createTask([file], { name: "早班" });
+
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.body).toBeInstanceOf(FormData);
+    expect(options.headers).toBeUndefined();
+  });
+
+  it("surfaces non-2xx JSON error messages", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "模型尚未就绪" }), {
+          status: 503,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(apiClient.getHealth()).rejects.toThrow("模型尚未就绪");
+  });
+
+  it("preserves the failed task filter", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], total: 0, offset: 0, limit: 20 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiClient.listTasks({ status: "failed" });
+
+    expect(fetchMock.mock.calls[0][0]).toContain("status=failed");
+  });
+
+  it("passes abort signals to polling requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "task-1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await apiClient.getTask("task-1", controller.signal);
+
+    expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
+  });
+});

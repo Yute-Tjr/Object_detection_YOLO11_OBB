@@ -1,0 +1,20 @@
+[Unit]
+Description=Terminal inspection FastAPI service
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=terminal-inspection
+Group=terminal-inspection
+WorkingDirectory=/opt/terminal-inspection/current
+EnvironmentFile=/etc/terminal-inspection/terminal-web.env
+ExecStartPre=/usr/bin/env ${TERMINAL_PYTHON} -m alembic upgrade head
+ExecStart=/usr/bin/env ${TERMINAL_PYTHON} scripts/run_terminal_api.py --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
