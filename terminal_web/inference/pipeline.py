@@ -208,12 +208,16 @@ class LoadedInferencePipeline:
                 )
             )
 
-        stage_callback(ImageStage.rendering)
         overall_result = aggregate_image_result(labels)
         prediction = ImagePrediction(
             regions=tuple(regions),
             overall_result=overall_result,
             warnings=tuple(warnings),
         )
+        stage_callback(ImageStage.rendering)
+        if artifacts.result_path is not None:
+            from terminal_web.inference.rendering import render_prediction
+
+            render_prediction(image_path, prediction, artifacts.result_path)
         stage_callback(ImageStage.complete)
         return prediction

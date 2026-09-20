@@ -243,30 +243,49 @@ def draw_visualization(
     detections: Sequence[PipelineDetection],
     output: Path,
 ) -> None:
-    image = cv2.imread(str(image_path))
-    if image is None:
-        raise ValueError(f"failed to read image: {image_path}")
+    from terminal_web.domain import OverallResult
+    from terminal_web.inference.rendering import render_prediction
+    from terminal_web.inference.types import (
+        ClassificationPrediction,
+        ImagePrediction,
+        RegionPrediction,
+    )
 
+    regions = []
     for detection in detections:
-        color = _box_color(detection)
-        points = np.array(detection.points, dtype=np.int32).reshape((-1, 1, 2))
-        cv2.polylines(image, [points], isClosed=True, color=color, thickness=2)
-        label_origin = tuple(points.reshape(-1, 2)[0])
-        text_origin = (int(label_origin[0]), max(int(label_origin[1]) - 6, 12))
-        cv2.putText(
-            image,
-            _visualization_text(detection),
-            text_origin,
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            color,
-            1,
-            cv2.LINE_AA,
+        anomaly = None
+        if detection.predicted_label:
+            anomaly = ClassificationPrediction(
+                label=detection.predicted_label,
+                confidence=detection.cls_confidence or 0.0,
+                probabilities=dict(detection.probabilities),
+            )
+        regions.append(
+            RegionPrediction(
+                region_label=detection.det_label,
+                detection_confidence=detection.det_conf,
+                points=detection.points,
+                selected_for_classification=anomaly is not None,
+                anomaly=anomaly,
+                color=None,
+                crop_path=detection.crop_path or None,
+                error=None,
+            )
         )
-
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if not cv2.imwrite(str(output), image):
-        raise RuntimeError(f"failed to write visualization: {output}")
+    selected_labels = {
+        detection.det_label: detection.predicted_label
+        for detection in detections
+        if detection.predicted_label
+    }
+    render_prediction(
+        image_path,
+        ImagePrediction(
+            regions=tuple(regions),
+            overall_result=OverallResult(final_result_from_selected(selected_labels)),
+            warnings=(),
+        ),
+        output,
+    )
 
 
 def load_pipeline_classifiers(
@@ -377,9 +396,13 @@ def run_pipeline(
 
     for result_index, image_path in enumerate(collect_image_paths(Path(source))):
         key = _safe_stem(result_index, image_path)
+        visualization_path = output / "visualizations" / f"{key}.jpg"
         prediction = pipeline.predict_image(
             image_path,
-            InferenceArtifacts(crop_dir=output / "crops" / key),
+            InferenceArtifacts(
+                crop_dir=output / "crops" / key,
+                result_path=visualization_path,
+            ),
             lambda stage: None,
         )
         detections: list[PipelineDetection] = []
@@ -402,8 +425,6 @@ def run_pipeline(
                 classified_total += 1
             detections.append(detection)
 
-        visualization_path = output / "visualizations" / f"{key}.jpg"
-        draw_visualization(image_path, detections, visualization_path)
         all_detection_rows.extend(format_detection_row(detection) for detection in detections)
         summary_rows.append(
             summary_row_for_image(
