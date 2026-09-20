@@ -76,7 +76,9 @@ describe("HistoryPage", () => {
     const api = client();
     render(<HistoryPage client={api} />);
 
-    await userEvent.click(await screen.findByText("T20260920-0100"));
+    await userEvent.click(
+      await screen.findByRole("button", { name: "预览 T20260920-0100" }),
+    );
     expect(api.getTask).toHaveBeenCalledWith("task-id", expect.anything());
     expect(await screen.findByAltText("检测前原图")).toHaveAttribute(
       "src",
@@ -116,5 +118,26 @@ describe("HistoryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "重试加载" }));
     await waitFor(() => expect(listTasks).toHaveBeenCalledTimes(3));
+  });
+
+  it("keeps the selected comparison when reopening fails", async () => {
+    const api = client({
+      getTask: vi.fn()
+        .mockResolvedValueOnce(detail)
+        .mockRejectedValueOnce(new Error("服务暂不可用")),
+    });
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "预览 T20260920-0100" }),
+    );
+    expect(await screen.findByAltText("检测前原图")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "预览 T20260920-0100" }),
+    );
+
+    expect(await screen.findByText("服务暂不可用")).toBeInTheDocument();
+    expect(screen.getByAltText("检测前原图")).toBeInTheDocument();
   });
 });
