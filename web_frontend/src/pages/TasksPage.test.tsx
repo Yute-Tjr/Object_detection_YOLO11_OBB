@@ -136,8 +136,10 @@ describe("TasksPage", () => {
     expect(screen.getByText("正在检测 0 / 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一张图片" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下一张图片" })).toBeInTheDocument();
-    expect(screen.getByAltText("检测前原图")).toBeInTheDocument();
-    expect(screen.getByAltText("检测后结果")).toBeInTheDocument();
+    expect(screen.getByAltText("检测前原图")).toHaveAttribute("width", "1440");
+    expect(screen.getByAltText("检测前原图")).toHaveAttribute("height", "3072");
+    expect(screen.getByAltText("检测后结果")).toHaveAttribute("width", "1440");
+    expect(screen.getByAltText("检测后结果")).toHaveAttribute("height", "3072");
   });
 
   it("requires operator and clears metadata only after creation succeeds", async () => {

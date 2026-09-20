@@ -48,6 +48,29 @@ def region_color(region: RegionPrediction) -> tuple[int, int, int]:
     return UNSUPPORTED_COLOR
 
 
+def label_origin(
+    points,
+    label_width: int,
+    label_height: int,
+    image_width: int,
+    image_height: int,
+    gap: int = 8,
+) -> tuple[int, int]:
+    left = max(0, int(min(x for x, _ in points)))
+    right = min(image_width, int(max(x for x, _ in points)))
+    top = max(0, int(min(y for _, y in points)))
+    bottom = min(image_height, int(max(y for _, y in points)))
+
+    x = right + gap
+    if x + label_width > image_width:
+        x = left - gap - label_width
+    x = min(max(x, 0), max(image_width - label_width, 0))
+
+    y = int((top + bottom - label_height) / 2)
+    y = min(max(y, 0), max(image_height - label_height, 0))
+    return x, y
+
+
 def _load_font(configured: Path | None, size: int):
     candidates = ((configured,) if configured else ()) + _CJK_FONT_CANDIDATES
     for candidate in candidates:
@@ -89,14 +112,20 @@ def render_prediction(
         color_bgr = region_color(region)
         color_rgb = (color_bgr[2], color_bgr[1], color_bgr[0])
         text = format_region_label(region, ascii_fallback=not supports_cjk)
-        x = max(int(min(point[0] for point in region.points)), 0)
-        top = max(int(min(point[1] for point in region.points)), 0)
         text_box = draw.textbbox((0, 0), text, font=font)
         text_width = text_box[2] - text_box[0]
         text_height = text_box[3] - text_box[1]
-        y = max(top - text_height - 8, 0)
+        label_width = text_width + 12
+        label_height = text_height + 8
+        x, y = label_origin(
+            region.points,
+            label_width,
+            label_height,
+            canvas.width,
+            canvas.height,
+        )
         draw.rounded_rectangle(
-            (x, y, x + text_width + 12, y + text_height + 8),
+            (x, y, x + label_width, y + label_height),
             radius=3,
             fill=color_rgb,
         )

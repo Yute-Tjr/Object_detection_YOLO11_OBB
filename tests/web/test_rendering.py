@@ -11,6 +11,7 @@ from terminal_web.inference.rendering import (
     OK_COLOR,
     UNSUPPORTED_COLOR,
     format_region_label,
+    label_origin,
     render_prediction,
 )
 from terminal_web.inference.types import (
@@ -46,6 +47,33 @@ def region(
 
 
 class RenderingTest(unittest.TestCase):
+    def test_label_origin_prefers_right_side(self):
+        self.assertEqual(
+            label_origin(
+                ((10, 20), (60, 20), (60, 80), (10, 80)),
+                40,
+                18,
+                200,
+                120,
+            ),
+            (68, 41),
+        )
+
+    def test_label_origin_falls_back_left_and_clamps_to_canvas(self):
+        x, y = label_origin(
+            ((150, 0), (195, 0), (195, 40), (150, 40)),
+            100,
+            24,
+            200,
+            80,
+        )
+
+        self.assertGreaterEqual(x, 0)
+        self.assertLessEqual(x + 100, 200)
+        self.assertGreaterEqual(y, 0)
+        self.assertLessEqual(y + 24, 80)
+        self.assertLess(x, 150)
+
     def test_format_labels_match_factory_semantics(self):
         square = ((0, 0), (10, 0), (10, 10), (0, 10))
         self.assertEqual(

@@ -55,7 +55,12 @@ export function ImageComparison({
         <figure className="comparison-card">
           <figcaption>检测前</figcaption>
           <div className="comparison-card__canvas">
-            <img src={image.originalUrl} alt="检测前原图" />
+            <img
+              src={image.originalUrl}
+              alt="检测前原图"
+              width={image.width}
+              height={image.height}
+            />
           </div>
           <p>{imageMeta(image)}</p>
         </figure>
@@ -63,7 +68,12 @@ export function ImageComparison({
           <figcaption>检测后</figcaption>
           <div className="comparison-card__canvas">
             {image.resultUrl ? (
-              <img src={image.resultUrl} alt="检测后结果" />
+              <img
+                src={image.resultUrl}
+                alt="检测后结果"
+                width={image.width}
+                height={image.height}
+              />
             ) : (
               <div className="result-placeholder">
                 <ImageSquare size={34} />
