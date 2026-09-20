@@ -9,8 +9,6 @@ if str(ROOT) not in sys.path:
 
 import uvicorn
 
-from terminal_web.api.app import create_app
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the terminal inspection API")
@@ -22,7 +20,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    uvicorn.run(create_app(), host=args.host, port=args.port, reload=args.reload)
+    uvicorn.run(
+        "terminal_web.api.app:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+    )
 
 
 if __name__ == "__main__":
