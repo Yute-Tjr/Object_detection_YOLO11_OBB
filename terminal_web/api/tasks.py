@@ -36,7 +36,7 @@ def _statuses_for_filter(value: str | None) -> list[TaskStatus] | None:
     if value == "success":
         return [TaskStatus.succeeded]
     if value == "failed":
-        return [TaskStatus.failed]
+        return [TaskStatus.failed, TaskStatus.partial_failed]
     try:
         return [TaskStatus(value)]
     except ValueError as exc:

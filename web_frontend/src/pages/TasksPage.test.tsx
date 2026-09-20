@@ -55,7 +55,7 @@ function fakeClient(overrides = {}) {
     getHealth: vi.fn().mockResolvedValue(health),
     createTask: vi.fn().mockResolvedValue(runningTask),
     getTask: vi.fn().mockResolvedValue(runningTask),
-    listTasks: vi.fn(),
+    listTasks: vi.fn().mockResolvedValue({ items: [], total: 0, offset: 0, limit: 100 }),
     getTaskImages: vi.fn(),
     getImage: vi.fn(),
     retryImage: vi.fn(),
@@ -130,7 +130,7 @@ describe("TasksPage", () => {
 
     await user.click(screen.getByRole("button", { name: "开始检测" }));
 
-    expect(await screen.findByText("T20260920-0001")).toBeInTheDocument();
+    expect((await screen.findAllByText("T20260920-0001")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("正在检测 0 / 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一张图片" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "下一张图片" })).toBeInTheDocument();
