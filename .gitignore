@@ -1,5 +1,7 @@
 /runs/
 /weights/
+/var/
+.env
 /yolo11n-obb.pt
 /yolo11s-obb.pt
 /已打标的数据202604.zip
