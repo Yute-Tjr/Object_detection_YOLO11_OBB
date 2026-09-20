@@ -9,6 +9,7 @@
 .venv/
 .idea/
 __pycache__/
+*.cache
 /.DS_Store
 /datasets/.DS_Store
 /datasets/154843_obb_train_val_test/.DS_Store
