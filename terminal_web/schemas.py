@@ -83,6 +83,7 @@ class TaskSummary(ApiModel):
     id: uuid.UUID
     display_id: str
     name: str | None = None
+    operator: str | None = None
     note: str | None = None
     status: TaskStatus
     current_stage: ImageStage

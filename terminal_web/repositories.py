@@ -28,12 +28,14 @@ class TaskRepository:
         display_id: str,
         images: Sequence[InspectionImage],
         *,
+        operator: str,
         name: str | None = None,
         note: str | None = None,
     ) -> InspectionTask:
         task = InspectionTask(
             id=task_id,
             display_id=display_id,
+            operator=operator,
             name=name,
             note=note,
             status=TaskStatus.queued,

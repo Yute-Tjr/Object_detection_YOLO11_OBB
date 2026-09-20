@@ -88,20 +88,65 @@ class ApiTest(unittest.TestCase):
             return session.scalar(select(func.count()).select_from(InspectionTask)) or 0
 
     def test_create_task_accepts_one_valid_image(self):
-        response = self.client.post("/api/v1/tasks", files=self.valid_files(1))
+        response = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+            data={"operator": "张三"},
+        )
         self.assertEqual(response.status_code, 202, response.text)
         self.assertEqual(response.json()["totalImages"], 1)
+        self.assertEqual(response.json()["operator"], "张三")
         self.assertEqual(self.count_tasks(), 1)
 
+    def test_create_task_requires_non_blank_operator(self):
+        for data in ({}, {"operator": "   "}):
+            response = self.client.post(
+                "/api/v1/tasks", files=self.valid_files(1), data=data
+            )
+            self.assertEqual(response.status_code, 422, response.text)
+        self.assertEqual(self.count_tasks(), 0)
+
+    def test_create_task_persists_operator_name_and_note(self):
+        response = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+            data={"operator": " 张三 ", "name": "早班", "note": "首件"},
+        )
+        self.assertEqual(response.status_code, 202, response.text)
+        payload = response.json()
+        self.assertEqual(payload["operator"], "张三")
+        self.assertEqual(payload["name"], "早班")
+        self.assertEqual(payload["note"], "首件")
+
+    def test_legacy_task_without_operator_is_readable(self):
+        with self.session_factory() as session:
+            task = InspectionTask(display_id="T-legacy", operator=None)
+            session.add(task)
+            session.commit()
+            task_id = task.id
+
+        response = self.client.get(f"/api/v1/tasks/{task_id}")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["operator"])
+
     def test_create_task_rejects_101_images_without_writing_files(self):
-        response = self.client.post("/api/v1/tasks", files=self.valid_files(101))
+        response = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(101),
+            data={"operator": "张三"},
+        )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.count_tasks(), 0)
         self.assertEqual(list(self.storage_root.iterdir()), [])
 
     def test_create_task_rejects_when_models_not_ready_without_creating_task(self):
         self.readiness.models_ready = False
-        response = self.client.post("/api/v1/tasks", files=self.valid_files(1))
+        response = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+            data={"operator": "张三"},
+        )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.count_tasks(), 0)
 
@@ -109,7 +154,9 @@ class ApiTest(unittest.TestCase):
         files = self.valid_files(1) + [
             ("files", ("bad.png", b"broken", "image/png"))
         ]
-        response = self.client.post("/api/v1/tasks", files=files)
+        response = self.client.post(
+            "/api/v1/tasks", files=files, data={"operator": "张三"}
+        )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.count_tasks(), 0)
         self.assertEqual(list(self.storage_root.iterdir()), [])

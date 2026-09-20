@@ -33,6 +33,7 @@ def task_summary(task: InspectionTask) -> TaskSummary:
         id=task.id,
         display_id=task.display_id,
         name=task.name,
+        operator=task.operator,
         note=task.note,
         status=task.status,
         current_stage=task.current_stage,

@@ -49,10 +49,15 @@ async def create_task(
     repository: Annotated[TaskRepository, Depends(get_repository)],
     storage: Annotated[ArtifactStorage, Depends(get_storage)],
     readiness: Annotated[ReadinessProvider, Depends(get_readiness)],
+    operator: Annotated[str, Form(min_length=1, max_length=128)],
     settings=Depends(get_app_settings),
     name: Annotated[str | None, Form()] = None,
     note: Annotated[str | None, Form()] = None,
 ) -> TaskDetail:
+    operator = operator.strip()
+    if not operator:
+        raise HTTPException(status_code=422, detail="操作员不能为空")
+
     health = readiness.snapshot()
     if not (
         health.api_ready
@@ -112,6 +117,7 @@ async def create_task(
             task_id,
             display_id,
             images,
+            operator=operator,
             name=name,
             note=note,
         )

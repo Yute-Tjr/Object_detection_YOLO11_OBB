@@ -55,6 +55,7 @@ class InspectionTask(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     display_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
+    operator: Mapped[str | None] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(
         String(32), default=TaskStatus.queued.value, nullable=False
     )

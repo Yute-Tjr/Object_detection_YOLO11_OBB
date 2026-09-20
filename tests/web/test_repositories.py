@@ -58,6 +58,20 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(task.failed_images, 1)
         self.assertEqual(task.status, TaskStatus.partial_failed)
 
+    def test_create_task_persists_operator(self):
+        task = self.repo.create_task(
+            uuid.uuid4(),
+            "T-create",
+            [],
+            operator="张三",
+            name="早班",
+            note="首件",
+        )
+
+        self.assertEqual(task.operator, "张三")
+        self.assertEqual(task.name, "早班")
+        self.assertEqual(task.note, "首件")
+
     def test_failed_filter_includes_failed_and_partial_failed(self):
         for status in (TaskStatus.failed, TaskStatus.partial_failed, TaskStatus.succeeded):
             self.session.add(
