@@ -1,0 +1,36 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.app-shell__sidebar {
+  padding: 26px 20px;
+  background: #14213a;
+  color: #fff;
+}
+
+.app-shell__content {
+  width: min(100%, var(--content-max));
+  padding: 28px 32px 64px;
+}
+
+.app-shell__content h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell__sidebar {
+    padding: 16px 20px;
+  }
+
+  .app-shell__content {
+    padding: 20px 16px 48px;
+  }
+}
