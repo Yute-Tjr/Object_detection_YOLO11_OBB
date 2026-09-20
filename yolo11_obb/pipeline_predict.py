@@ -10,7 +10,12 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .classification_inference import classification_transform, load_resnet18_checkpoint, select_device
+from .classification_inference import (
+    classification_transform,
+    collect_image_paths,
+    load_resnet18_checkpoint,
+    select_device,
+)
 from .obb_crop import rectify_obb_crop
 
 
@@ -346,30 +351,23 @@ def run_pipeline(
     cls_imgsz: int,
     exist_ok: bool,
 ) -> Dict[str, object]:
+    from terminal_web.inference.pipeline import InferenceArtifacts, LoadedInferencePipeline
+
     output = Path(output).expanduser().resolve()
     if output.exists() and any(output.iterdir()) and not exist_ok:
         raise FileExistsError(f"output directory is not empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
 
-    classifiers = load_pipeline_classifiers(
-        {
-            "label3": Path(label3_weights).expanduser().resolve(),
-            "label5": Path(label5_weights).expanduser().resolve(),
-        },
-        device_name=cls_device,
-        imgsz=cls_imgsz,
+    pipeline = LoadedInferencePipeline(
+        detector_weights=Path(det_weights).expanduser().resolve(),
+        label3_weights=Path(label3_weights).expanduser().resolve(),
+        label5_weights=Path(label5_weights).expanduser().resolve(),
+        detection_imgsz=imgsz,
+        detection_confidence=det_conf,
+        detection_device=det_device,
+        classification_imgsz=cls_imgsz,
+        classification_device=cls_device,
     )
-    yolo = _load_yolo_model(Path(det_weights).expanduser().resolve())
-    predict_kwargs = {
-        "source": str(Path(source).expanduser()),
-        "imgsz": imgsz,
-        "conf": det_conf,
-        "save": False,
-        "verbose": True,
-    }
-    if det_device is not None:
-        predict_kwargs["device"] = det_device
-    results = yolo.predict(**predict_kwargs)
 
     all_detection_rows: List[Dict[str, str]] = []
     summary_rows: List[Dict[str, str]] = []
@@ -377,22 +375,32 @@ def run_pipeline(
     detections_total = 0
     classified_total = 0
 
-    for result_index, result in enumerate(results):
-        detections = detections_from_yolo_result(result)
-        image_path = Path(str(result.path))
-        image = cv2.imread(str(image_path))
-        if image is None:
-            raise ValueError(f"failed to read image: {image_path}")
-
+    for result_index, image_path in enumerate(collect_image_paths(Path(source))):
         key = _safe_stem(result_index, image_path)
-        for detection in detections:
-            classifier = classifiers.get(detection.det_label)
-            if classifier is None:
-                continue
-            crop_output = output / "crops" / key / f"{detection.det_label}_{detection.det_index}.png"
-            classify_detection_crop(image, detection, classifier, crop_output)
-            detection.crop_path = str(crop_output.relative_to(output))
-            classified_total += 1
+        prediction = pipeline.predict_image(
+            image_path,
+            InferenceArtifacts(crop_dir=output / "crops" / key),
+            lambda stage: None,
+        )
+        detections: list[PipelineDetection] = []
+        for det_index, region in enumerate(prediction.regions):
+            detection = PipelineDetection(
+                image_path=image_path,
+                image_name=image_path.name,
+                det_index=det_index,
+                det_label=region.region_label,
+                det_conf=region.detection_confidence,
+                points=tuple(region.points),  # type: ignore[arg-type]
+            )
+            if region.crop_path:
+                detection.crop_path = str(Path(region.crop_path).relative_to(output))
+            if region.anomaly:
+                detection.classifier = region.region_label
+                detection.predicted_label = region.anomaly.label
+                detection.cls_confidence = region.anomaly.confidence
+                detection.probabilities = dict(region.anomaly.probabilities)
+                classified_total += 1
+            detections.append(detection)
 
         visualization_path = output / "visualizations" / f"{key}.jpg"
         draw_visualization(image_path, detections, visualization_path)
@@ -414,7 +422,7 @@ def run_pipeline(
         "images": images,
         "detections": detections_total,
         "classified": classified_total,
-        "classifiers": sorted(classifiers),
+        "classifiers": sorted(pipeline.classifiers),
     }
     lines = [f"{key}: {value}" for key, value in report.items()]
     (output / "pipeline_report.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
