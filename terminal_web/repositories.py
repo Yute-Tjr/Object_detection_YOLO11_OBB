@@ -129,7 +129,6 @@ class TaskRepository:
             task.current_stage = ImageStage.complete
             task.finished_at = datetime.now(UTC)
             task.worker_id = None
-            task.heartbeat_at = None
         self.session.flush()
         return task
 

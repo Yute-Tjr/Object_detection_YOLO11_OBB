@@ -27,6 +27,7 @@ class ModelHealth(ApiModel):
     name: str
     version: str
     ready: bool
+    sha256: str | None = None
     error: str | None = None
 
 

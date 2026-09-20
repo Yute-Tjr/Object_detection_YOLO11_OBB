@@ -3,9 +3,9 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
 from terminal_web.api import health, images, tasks
-from terminal_web.api.health import FileReadinessProvider
 from terminal_web.config import get_settings
 from terminal_web.database import build_session_factory
+from terminal_web.readiness import ReadinessStore
 from terminal_web.storage import ArtifactStorage
 
 
@@ -23,10 +23,9 @@ def create_app(
     if storage is None:
         storage = ArtifactStorage(settings.storage_root)
     if readiness is None:
-        readiness = FileReadinessProvider(
-            settings.detector_weights,
-            settings.label3_classifier_weights,
-            settings.label5_classifier_weights,
+        readiness = ReadinessStore(
+            settings.storage_root / "worker-readiness.json",
+            timeout_seconds=settings.worker_heartbeat_timeout_seconds,
         )
 
     app = FastAPI(title="端子分区域检测与异常分类", version="1.0.0")
