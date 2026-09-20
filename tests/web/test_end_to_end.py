@@ -115,7 +115,7 @@ class EndToEndWorkflowTest(unittest.TestCase):
                 ("files", ("ok.png", png_bytes((20, 120, 20)), "image/png")),
                 ("files", ("failed.png", png_bytes((120, 20, 20)), "image/png")),
             ],
-            data={"name": "端到端测试"},
+            data={"operator": "测试员", "name": "端到端测试"},
         )
         self.assertEqual(response.status_code, 202, response.text)
         task_id = response.json()["id"]
