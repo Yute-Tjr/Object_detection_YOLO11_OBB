@@ -1,4 +1,4 @@
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, Eye } from "@phosphor-icons/react";
 import { Fragment, useMemo, useState } from "react";
 
 import type { ImageStage, TaskStatus, TaskSummary } from "../api/types";
@@ -69,6 +69,7 @@ export function TaskTable({ tasks, onSelectTask, initialFilter = "ongoing" }: Ta
               <th>当前阶段</th>
               <th>状态</th>
               <th>创建时间</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -91,11 +92,7 @@ export function TaskTable({ tasks, onSelectTask, initialFilter = "ongoing" }: Ta
                       </button>
                     </td>
                     <td>{index + 1}</td>
-                    <td>
-                      <button className="task-id-button" onClick={() => onSelectTask(task)}>
-                        {task.displayId}
-                      </button>
-                    </td>
+                    <td><span className="task-id-text">{task.displayId}</span></td>
                     <td>{task.totalImages}</td>
                     <td>
                       <div className="table-progress-copy">{task.completedImages} / {task.totalImages}</div>
@@ -109,10 +106,21 @@ export function TaskTable({ tasks, onSelectTask, initialFilter = "ongoing" }: Ta
                       </span>
                     </td>
                     <td>{formatDate(task.createdAt)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="preview-button"
+                        aria-label={`预览 ${task.displayId}`}
+                        onClick={() => onSelectTask(task)}
+                      >
+                        <Eye size={17} />
+                        预览
+                      </button>
+                    </td>
                   </tr>
                   {expanded && (
                     <tr className="task-details-row">
-                      <td colSpan={9}><TaskDetails task={task} /></td>
+                      <td colSpan={10}><TaskDetails task={task} /></td>
                     </tr>
                   )}
                 </Fragment>

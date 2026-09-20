@@ -19,11 +19,18 @@ describe("apiClient", () => {
     vi.stubGlobal("fetch", fetchMock);
     const file = new File(["image"], "terminal.png", { type: "image/png" });
 
-    await apiClient.createTask([file], { name: "早班" });
+    await apiClient.createTask(
+      [file],
+      { operator: "张三", name: "早班", note: "首件" },
+    );
 
     const [, options] = fetchMock.mock.calls[0];
     expect(options.body).toBeInstanceOf(FormData);
     expect(options.headers).toBeUndefined();
+    const body = options.body as FormData;
+    expect(body.get("operator")).toBe("张三");
+    expect(body.get("name")).toBe("早班");
+    expect(body.get("note")).toBe("首件");
   });
 
   it("surfaces non-2xx JSON error messages", async () => {

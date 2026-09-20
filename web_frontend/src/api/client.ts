@@ -46,13 +46,14 @@ export const apiClient = {
 
   createTask(
     files: File[],
-    metadata: CreateTaskMetadata = {},
+    metadata: CreateTaskMetadata,
     signal?: AbortSignal,
   ): Promise<TaskDetail> {
     const body = new FormData();
     files.forEach((file) => body.append("files", file));
-    if (metadata.name) body.append("name", metadata.name);
-    if (metadata.note) body.append("note", metadata.note);
+    body.append("operator", metadata.operator.trim());
+    if (metadata.name?.trim()) body.append("name", metadata.name.trim());
+    if (metadata.note?.trim()) body.append("note", metadata.note.trim());
     return request("/tasks", { method: "POST", body, signal });
   },
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient, type ApiClient } from "../api/client";
-import type { HealthResponse, TaskDetail, TaskSummary } from "../api/types";
+import type { CreateTaskMetadata, HealthResponse, TaskDetail, TaskSummary } from "../api/types";
 import { ImageComparison } from "../components/ImageComparison";
 import { ProgressPanel } from "../components/ProgressPanel";
 import { TaskTable } from "../components/TaskTable";
@@ -19,6 +19,7 @@ interface TasksPageProps {
 
 export function TasksPage({ client = apiClient, initialTask = null }: TasksPageProps) {
   const [files, setFiles] = useState<File[]>([]);
+  const [metadata, setMetadata] = useState<CreateTaskMetadata>({ operator: "" });
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [loadingHealth, setLoadingHealth] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -71,10 +72,15 @@ export function TasksPage({ client = apiClient, initialTask = null }: TasksPageP
     setSubmitting(true);
     setError(null);
     try {
-      const created = await client.createTask(files, {});
+      const created = await client.createTask(files, {
+        operator: metadata.operator.trim(),
+        name: metadata.name?.trim() || undefined,
+        note: metadata.note?.trim() || undefined,
+      });
       setCreatedTask(created);
       setTask(created);
       setFiles([]);
+      setMetadata({ operator: "" });
       setSelectedIndex(0);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "任务创建失败");
@@ -111,6 +117,8 @@ export function TasksPage({ client = apiClient, initialTask = null }: TasksPageP
       <UploadPanel
         files={files}
         onFilesChange={setFiles}
+        metadata={metadata}
+        onMetadataChange={setMetadata}
         onStart={start}
         health={health}
         loadingHealth={loadingHealth}

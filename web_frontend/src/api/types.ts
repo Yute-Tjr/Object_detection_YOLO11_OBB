@@ -77,6 +77,7 @@ export interface TaskSummary {
   id: string;
   displayId: string;
   name?: string | null;
+  operator?: string | null;
   note?: string | null;
   status: TaskStatus;
   currentStage: ImageStage;
@@ -109,6 +110,7 @@ export interface ImagePage {
 }
 
 export interface CreateTaskMetadata {
+  operator: string;
   name?: string;
   note?: string;
 }

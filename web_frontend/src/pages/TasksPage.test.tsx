@@ -24,6 +24,7 @@ const runningTask: TaskDetail = {
   id: "task-1",
   displayId: "T20260920-0001",
   name: "端子_产线A_早班",
+  operator: "张三",
   note: "",
   status: "running",
   currentStage: "object_detection",
@@ -127,6 +128,7 @@ describe("TasksPage", () => {
     fireEvent.change(screen.getByLabelText("选择图片"), {
       target: { files: files(1) },
     });
+    await user.type(screen.getByLabelText("操作员"), "张三");
 
     await user.click(screen.getByRole("button", { name: "开始检测" }));
 
@@ -136,6 +138,35 @@ describe("TasksPage", () => {
     expect(screen.getByRole("button", { name: "下一张图片" })).toBeInTheDocument();
     expect(screen.getByAltText("检测前原图")).toBeInTheDocument();
     expect(screen.getByAltText("检测后结果")).toBeInTheDocument();
+  });
+
+  it("requires operator and clears metadata only after creation succeeds", async () => {
+    const api = fakeClient();
+    const user = userEvent.setup();
+    const { unmount } = render(<TasksPage client={api} />);
+    await screen.findByText("YOLO11l-OBB");
+    fireEvent.change(screen.getByLabelText("选择图片"), {
+      target: { files: files(1) },
+    });
+    expect(screen.getByRole("button", { name: "开始检测" })).toBeDisabled();
+
+    await user.type(screen.getByLabelText("操作员"), "张三");
+    await user.type(screen.getByLabelText("任务名称"), "早班");
+    await user.type(screen.getByLabelText("备注"), "首件");
+    await user.click(screen.getByRole("button", { name: "开始检测" }));
+
+    expect(api.createTask).toHaveBeenCalledWith(expect.any(Array), {
+      operator: "张三",
+      name: "早班",
+      note: "首件",
+    });
+    expect(screen.getByLabelText("操作员")).toHaveValue("");
+    expect(screen.getByLabelText("任务名称")).toHaveValue("");
+    expect(screen.getByLabelText("备注")).toHaveValue("");
+
+    unmount();
+    render(<TasksPage client={fakeClient()} />);
+    expect(screen.getByLabelText("操作员")).toHaveValue("");
   });
 
   it.each(["succeeded", "partial_failed", "failed"] as const)(
