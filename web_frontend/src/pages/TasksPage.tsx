@@ -32,7 +32,11 @@ export function TasksPage({ client = apiClient, initialTask = null }: TasksPageP
     const controller = new AbortController();
     client.getHealth(controller.signal)
       .then(setHealth)
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "无法读取系统状态"))
+      .catch((reason) => {
+        if (!controller.signal.aborted) {
+          setError(reason instanceof Error ? reason.message : "无法读取系统状态");
+        }
+      })
       .finally(() => setLoadingHealth(false));
     return () => controller.abort();
   }, [client]);
@@ -42,7 +46,9 @@ export function TasksPage({ client = apiClient, initialTask = null }: TasksPageP
     client.listTasks({ status: "all", limit: 100 }, controller.signal)
       .then((page) => setRecentTasks(page.items))
       .catch(() => {
-        // The active upload flow remains usable when task history is temporarily unavailable.
+        if (!controller.signal.aborted) {
+          // The active upload flow remains usable when task history is temporarily unavailable.
+        }
       });
     return () => controller.abort();
   }, [client]);

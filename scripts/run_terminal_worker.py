@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 import os
 import socket
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from terminal_web.config import get_settings
 from terminal_web.database import build_session_factory

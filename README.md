@@ -658,3 +658,93 @@ runs/classification/<run_name>/
 ```
 
 上述分类结果基于人工 OBB 框裁剪，主要验证分类器能力；接入检测框后的端到端结果还会同时受到 OBB 定位误差影响。
+
+## 12. 端子检测网页
+
+网页第一版已接通完整闭环：1–100 张图片上传、YOLO11l-OBB 分区域检测、label3/label5 ResNet18 OK/NG 分类、实时阶段与进度、检测前后对比、任务状态筛选、失败图片重试和可刷新恢复的持久化历史。其他区域以灰框标记为“暂不支持分类”。颜色分类仅预留 API 与 UI 位置，当前不会生成或猜测颜色结果。
+
+### 12.1 权重和运行环境
+
+固定使用以下三个本地权重：
+
+```text
+weights/detector/yolo11l_obb_best.pt
+weights/classifiers/label3/resnet18_best.pt
+weights/classifiers/label5/resnet18_best.pt
+```
+
+创建环境并配置服务：
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements-web.txt
+cp .env.example .env
+```
+
+`.env` 至少要设置 PostgreSQL URL、持久化目录、三个权重路径和设备：
+
+```dotenv
+DATABASE_URL=postgresql+psycopg://terminal:请替换密码@127.0.0.1:5432/terminal_inspection
+INSPECTION_STORAGE_ROOT=/srv/terminal-inspection/artifacts
+DETECTOR_WEIGHTS=./weights/detector/yolo11l_obb_best.pt
+LABEL3_CLASSIFIER_WEIGHTS=./weights/classifiers/label3/resnet18_best.pt
+LABEL5_CLASSIFIER_WEIGHTS=./weights/classifiers/label5/resnet18_best.pt
+DETECTION_DEVICE=0
+CLASSIFICATION_DEVICE=0
+```
+
+不要把包含真实密码的 `.env` 提交到 Git。
+
+### 12.2 开发启动
+
+先迁移数据库，再分别启动 API、单个 Worker 和前端：
+
+```bash
+.venv/bin/python -m alembic upgrade head
+.venv/bin/python scripts/run_terminal_api.py --host 127.0.0.1 --port 8000
+.venv/bin/python scripts/run_terminal_worker.py
+```
+
+```bash
+cd web_frontend
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+访问 `http://127.0.0.1:5173/tasks`，健康接口为 `http://127.0.0.1:8000/api/v1/health`。Vite 开发服务已代理 `/api`；生产环境由 Nginx 代理。
+
+### 12.3 Compose 与学校服务器部署
+
+Compose 启动命令：
+
+```bash
+docker compose config
+docker compose up -d postgres
+docker compose run --rm api alembic upgrade head
+docker compose up -d api worker frontend
+curl -fsS http://127.0.0.1:8080/api/v1/health
+```
+
+Compose 使用 `postgres-data` 保存 PostgreSQL，使用 `inspection-data` 保存原图和结果图。原生服务器建议将 artifact 目录固定为 `/srv/terminal-inspection/artifacts`，并用 `pg_dump` 与 `rsync` 同时备份数据库和图像。完整 systemd、Nginx、日志、备份和回滚步骤见 [网页部署文档](docs/web-deployment.md)。
+
+### 12.4 验证命令
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+cd web_frontend
+npm test -- --run
+npm run build
+```
+
+真实三模型 CPU smoke：
+
+```bash
+.venv/bin/python scripts/smoke_terminal_pipeline.py \
+  --detector weights/detector/yolo11l_obb_best.pt \
+  --label3 weights/classifiers/label3/resnet18_best.pt \
+  --label5 weights/classifiers/label5/resnet18_best.pt \
+  --image datasets/rhino_obb/test/images/CropImage_20260128141159842_F3-I0_OK-3.png \
+  --output runs/web-smoke-final \
+  --det-device cpu \
+  --cls-device cpu
+```
