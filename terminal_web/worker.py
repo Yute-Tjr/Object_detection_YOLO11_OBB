@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import signal
 import threading
 import uuid
@@ -27,6 +28,9 @@ from terminal_web.readiness import (
 )
 from terminal_web.repositories import TaskRepository
 from terminal_web.storage import ArtifactStorage
+
+
+logger = logging.getLogger(__name__)
 
 
 class InspectionWorker:
@@ -74,8 +78,10 @@ class InspectionWorker:
                     }
             self.pipeline = pipeline
             self.readiness.mark_ready(models, self.worker_id, self.clock())
+            logger.info("模型加载完成 worker_id=%s", self.worker_id)
             return True
         except Exception as exc:
+            logger.exception("模型加载失败 error=%s", exc.__class__.__name__)
             self.pipeline = None
             self.readiness.mark_failed(
                 f"model loading failed: {exc.__class__.__name__}"
@@ -115,14 +121,38 @@ class InspectionWorker:
                 ),
                 key=lambda image: image.sequence_no,
             )
-            for image in queued_images:
-                self._process_image(session, task, image)
+            task_started_at = self.clock()
+            total = len(queued_images)
+            logger.info("开始任务 task_id=%s images=%d", task.id, total)
+            for position, image in enumerate(queued_images, start=1):
+                self._process_image(session, task, image, position, total)
 
-            TaskRepository(session).recompute_progress(task.id)
+            task = TaskRepository(session).recompute_progress(task.id)
             session.commit()
+            elapsed = max((self.clock() - task_started_at).total_seconds(), 0.0)
+            logger.info(
+                "任务完成 task_id=%s succeeded=%d failed=%d elapsed=%.2fs",
+                task.id,
+                task.succeeded_images,
+                task.failed_images,
+                elapsed,
+            )
         return True
 
-    def _process_image(self, session, task: InspectionTask, image: InspectionImage) -> None:
+    def _process_image(
+        self,
+        session,
+        task: InspectionTask,
+        image: InspectionImage,
+        position: int,
+        total: int,
+    ) -> None:
+        logger.info(
+            "[%d/%d] 目标检测 filename=%s",
+            position,
+            total,
+            image.original_filename,
+        )
         image.status = ImageStatus.running
         image.stage = ImageStage.object_detection
         image.started_at = self.clock()
@@ -139,6 +169,13 @@ class InspectionWorker:
             task.heartbeat_at = self.clock()
             self.readiness.heartbeat(self.worker_id, task.heartbeat_at)
             session.commit()
+            if stage == ImageStage.anomaly_classification:
+                logger.info(
+                    "[%d/%d] 异常分类 filename=%s",
+                    position,
+                    total,
+                    image.original_filename,
+                )
 
         try:
             original_path = self.storage.resolve(image.original_path)
@@ -198,7 +235,21 @@ class InspectionWorker:
             task.heartbeat_at = self.clock()
             TaskRepository(session).recompute_progress(task.id)
             session.commit()
+            logger.info(
+                "[%d/%d] 完成 filename=%s result=%s",
+                position,
+                total,
+                image.original_filename,
+                image.overall_result,
+            )
         except Exception as exc:
+            logger.exception(
+                "[%d/%d] 失败 filename=%s error=%s",
+                position,
+                total,
+                image.original_filename,
+                exc.__class__.__name__,
+            )
             session.rollback()
             task = session.get(InspectionTask, task.id)
             image = session.get(InspectionImage, image.id)

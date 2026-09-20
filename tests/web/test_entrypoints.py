@@ -1,4 +1,5 @@
 import runpy
+import logging
 import subprocess
 import sys
 import unittest
@@ -10,6 +11,17 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ScriptEntrypointTest(unittest.TestCase):
+    def test_worker_logging_uses_compact_server_format(self):
+        from scripts import run_terminal_worker
+
+        with patch.object(logging, "basicConfig") as configure:
+            run_terminal_worker.configure_logging()
+
+        configure.assert_called_once_with(
+            level="INFO",
+            format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        )
+
     def test_api_script_can_import_project_when_run_directly(self):
         result = subprocess.run(
             [str(ROOT / ".venv/bin/python"), "scripts/run_terminal_api.py", "--help"],

@@ -167,6 +167,31 @@ class WorkerTest(unittest.TestCase):
             self.assertEqual(task.completed_images, 1)
             self.assertEqual(task.status, TaskStatus.succeeded)
 
+    def test_worker_logs_compact_task_progress(self):
+        task_id = self.make_task(1)
+
+        with self.assertLogs("terminal_web.worker", level="INFO") as captured:
+            self.worker(FakePipeline()).run_once()
+
+        text = "\n".join(captured.output)
+        self.assertIn("模型加载完成", text)
+        self.assertIn(f"开始任务 task_id={task_id}", text)
+        self.assertIn("[1/1] 目标检测 filename=image-0.png", text)
+        self.assertIn("[1/1] 异常分类 filename=image-0.png", text)
+        self.assertIn("[1/1] 完成", text)
+        self.assertIn("任务完成", text)
+        self.assertNotIn(str(self.storage.root), text)
+
+    def test_worker_logs_image_failure_without_stopping_batch(self):
+        self.make_task(2)
+
+        with self.assertLogs("terminal_web.worker", level="INFO") as captured:
+            self.worker(FakePipeline(fail_calls={0})).run_once()
+
+        text = "\n".join(captured.output)
+        self.assertIn("[1/2] 失败", text)
+        self.assertIn("[2/2] 完成", text)
+
     def test_one_corrupt_image_does_not_abort_remaining_images(self):
         task_id = self.make_task(2)
         pipeline = FakePipeline(fail_calls={0})

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import os
 import socket
 import sys
@@ -16,7 +17,15 @@ from terminal_web.storage import ArtifactStorage
 from terminal_web.worker import InspectionWorker
 
 
+def configure_logging() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
 def main() -> None:
+    configure_logging()
     settings = get_settings()
     _, session_factory = build_session_factory(settings.database_url)
     storage = ArtifactStorage(settings.storage_root)
