@@ -58,6 +58,10 @@ class TaskRepository:
         )
         return self.session.scalar(statement)
 
+    def delete_task(self, task: InspectionTask) -> None:
+        self.session.delete(task)
+        self.session.flush()
+
     def list_tasks(
         self,
         statuses: Sequence[TaskStatus | str] | None,

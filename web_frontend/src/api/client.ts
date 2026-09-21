@@ -25,6 +25,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new Error(message);
   }
+  if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
@@ -71,6 +72,13 @@ export const apiClient = {
 
   getTask(taskId: string, signal?: AbortSignal): Promise<TaskDetail> {
     return request(`/tasks/${encodeURIComponent(taskId)}`, { signal });
+  },
+
+  deleteTask(taskId: string, signal?: AbortSignal): Promise<void> {
+    return request(`/tasks/${encodeURIComponent(taskId)}`, {
+      method: "DELETE",
+      signal,
+    });
   },
 
   getTaskImages(

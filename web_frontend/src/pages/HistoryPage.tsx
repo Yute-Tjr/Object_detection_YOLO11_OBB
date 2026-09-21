@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { apiClient, type ApiClient } from "../api/client";
 import type { TaskDetail, TaskSummary } from "../api/types";
+import { DeleteTaskDialog } from "../components/DeleteTaskDialog";
 import { ImageComparison } from "../components/ImageComparison";
 import { TaskTable } from "../components/TaskTable";
 
@@ -30,6 +31,8 @@ export function HistoryPage({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<TaskSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
@@ -98,6 +101,38 @@ export function HistoryPage({
     }
   };
 
+  const requestDeleteTask = (task: TaskSummary) => {
+    if (task.status !== "queued" && task.status !== "running") {
+      setPendingDeleteTask(task);
+    }
+  };
+
+  const cancelDeleteTask = useCallback(() => {
+    setPendingDeleteTask(null);
+  }, []);
+
+  const deleteTask = async () => {
+    if (!pendingDeleteTask) return;
+    const task = pendingDeleteTask;
+
+    setDeletingTaskId(task.id);
+    setError(null);
+    try {
+      await client.deleteTask(task.id);
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      if (selectedTask?.id === task.id) {
+        setSelectedTask(null);
+        setSelectedIndex(0);
+        onRouteChange?.();
+      }
+      setPendingDeleteTask(null);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setDeletingTaskId(null);
+    }
+  };
+
   return (
     <div className="history-page">
       <header className="page-header">
@@ -123,7 +158,13 @@ export function HistoryPage({
       {loading && tasks.length === 0 ? (
         <div className="history-loading">正在读取历史任务…</div>
       ) : (
-        <TaskTable tasks={filteredTasks} onSelectTask={(task) => void openTask(task.id)} initialFilter="all" />
+        <TaskTable
+          tasks={filteredTasks}
+          onSelectTask={(task) => void openTask(task.id)}
+          onDeleteTask={requestDeleteTask}
+          deletingTaskId={deletingTaskId}
+          initialFilter="all"
+        />
       )}
 
       {selectedTask && selectedImage && (
@@ -146,6 +187,15 @@ export function HistoryPage({
             colorModelAvailable={colorModelAvailable}
           />
         </section>
+      )}
+
+      {pendingDeleteTask && (
+        <DeleteTaskDialog
+          task={pendingDeleteTask}
+          deleting={deletingTaskId === pendingDeleteTask.id}
+          onCancel={cancelDeleteTask}
+          onConfirm={() => void deleteTask()}
+        />
       )}
     </div>
   );

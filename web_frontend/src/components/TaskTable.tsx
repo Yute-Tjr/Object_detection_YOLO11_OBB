@@ -1,4 +1,4 @@
-import { CaretDown, CaretRight, Eye } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, Eye, Trash } from "@phosphor-icons/react";
 import { Fragment, useMemo, useState } from "react";
 
 import type { ImageStage, TaskStatus, TaskSummary } from "../api/types";
@@ -9,6 +9,8 @@ import { belongsToFilter, TaskFilters, type TaskFilter } from "./TaskFilters";
 interface TaskTableProps {
   tasks: TaskSummary[];
   onSelectTask: (task: TaskSummary) => void;
+  onDeleteTask?: (task: TaskSummary) => void;
+  deletingTaskId?: string | null;
   initialFilter?: TaskFilter;
 }
 
@@ -43,7 +45,13 @@ function formatDate(value: string) {
   }).format(date).replaceAll("/", "-");
 }
 
-export function TaskTable({ tasks, onSelectTask, initialFilter = "ongoing" }: TaskTableProps) {
+export function TaskTable({
+  tasks,
+  onSelectTask,
+  onDeleteTask,
+  deletingTaskId,
+  initialFilter = "ongoing",
+}: TaskTableProps) {
   const [filter, setFilter] = useState<TaskFilter>(initialFilter);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const counts = useMemo(() => ({
@@ -108,15 +116,38 @@ export function TaskTable({ tasks, onSelectTask, initialFilter = "ongoing" }: Ta
                     </td>
                     <td>{formatDate(task.createdAt)}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="preview-button"
-                        aria-label={`预览 ${task.displayId}`}
-                        onClick={() => onSelectTask(task)}
-                      >
-                        <Eye size={17} />
-                        预览
-                      </button>
+                      <div className="task-actions">
+                        <button
+                          type="button"
+                          className="preview-button"
+                          aria-label={`预览 ${task.displayId}`}
+                          onClick={() => onSelectTask(task)}
+                        >
+                          <Eye size={17} />
+                          预览
+                        </button>
+                        {onDeleteTask && (
+                          <button
+                            type="button"
+                            className="delete-button"
+                            aria-label={`删除 ${task.displayId}`}
+                            disabled={
+                              task.status === "queued"
+                              || task.status === "running"
+                              || deletingTaskId === task.id
+                            }
+                            title={
+                              task.status === "queued" || task.status === "running"
+                                ? "进行中的任务不能删除"
+                                : undefined
+                            }
+                            onClick={() => onDeleteTask(task)}
+                          >
+                            <Trash size={17} />
+                            {deletingTaskId === task.id ? "删除中" : "删除"}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {expanded && (

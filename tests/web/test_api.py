@@ -182,6 +182,43 @@ class ApiTest(unittest.TestCase):
         statuses = {item["status"] for item in response.json()["items"]}
         self.assertEqual(statuses, {"failed", "partial_failed"})
 
+    def test_delete_completed_task_removes_database_record_and_artifacts(self):
+        created = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+            data={"operator": "张三"},
+        )
+        self.assertEqual(created.status_code, 202, created.text)
+        task_id = created.json()["id"]
+        task_dir = self.storage_root / "tasks" / task_id
+        with self.session_factory() as session:
+            task = session.get(InspectionTask, uuid.UUID(task_id))
+            task.status = TaskStatus.succeeded
+            task.current_stage = ImageStage.complete
+            session.commit()
+
+        response = self.client.delete(f"/api/v1/tasks/{task_id}")
+
+        self.assertEqual(response.status_code, 204, response.text)
+        self.assertEqual(self.count_tasks(), 0)
+        self.assertFalse(task_dir.exists())
+
+    def test_delete_running_task_is_rejected_without_removing_data(self):
+        created = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+            data={"operator": "张三"},
+        )
+        self.assertEqual(created.status_code, 202, created.text)
+        task_id = created.json()["id"]
+        task_dir = self.storage_root / "tasks" / task_id
+
+        response = self.client.delete(f"/api/v1/tasks/{task_id}")
+
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(self.count_tasks(), 1)
+        self.assertTrue(task_dir.exists())
+
     def test_retry_only_accepts_failed_image(self):
         image_id = uuid.uuid4()
         with self.session_factory() as session:

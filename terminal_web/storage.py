@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,6 +95,33 @@ class ArtifactStorage:
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         return path
+
+    def quarantine_task(self, task_id: uuid.UUID) -> Path | None:
+        """Move a task's artifacts aside so they can be restored if DB deletion fails."""
+        task_dir = self._inside(self.root / "tasks" / str(task_id))
+        if not task_dir.exists():
+            return None
+
+        trash_dir = self._inside(self.root / ".trash")
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        quarantined = self._inside(
+            trash_dir / f"{task_id}-{uuid.uuid4().hex}"
+        )
+        task_dir.replace(quarantined)
+        return quarantined
+
+    def restore_task(self, task_id: uuid.UUID, quarantined: Path | None) -> None:
+        if quarantined is None or not quarantined.exists():
+            return
+        quarantined = self._inside(quarantined)
+        task_dir = self._inside(self.root / "tasks" / str(task_id))
+        task_dir.parent.mkdir(parents=True, exist_ok=True)
+        quarantined.replace(task_dir)
+
+    def purge_quarantined_task(self, quarantined: Path | None) -> None:
+        if quarantined is None or not quarantined.exists():
+            return
+        shutil.rmtree(self._inside(quarantined))
 
     def relative(self, absolute: Path) -> str:
         resolved = absolute.expanduser().resolve()

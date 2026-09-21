@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -62,6 +62,7 @@ function client(overrides = {}) {
     getTaskImages: vi.fn(),
     getImage: vi.fn(),
     retryImage: vi.fn().mockResolvedValue({ ...detail.images[1], status: "queued" }),
+    deleteTask: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -139,5 +140,48 @@ describe("HistoryPage", () => {
 
     expect(await screen.findByText("服务暂不可用")).toBeInTheDocument();
     expect(screen.getByAltText("检测前原图")).toBeInTheDocument();
+  });
+
+  it("deletes a confirmed completed task and closes its preview", async () => {
+    const api = client();
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} initialTaskId="task-id" />);
+
+    expect(await screen.findByAltText("检测前原图")).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "删除 T20260920-0100" }),
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "确认删除任务" });
+    expect(within(dialog).getByText("T20260920-0100")).toBeInTheDocument();
+    expect(within(dialog).getByText(/2 张原图、结果图和检测记录/)).toBeInTheDocument();
+    expect(api.deleteTask).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "确认删除" }));
+
+    await waitFor(() => expect(api.deleteTask).toHaveBeenCalledWith("task-id"));
+    await waitFor(() => {
+      expect(screen.queryByText("T20260920-0100")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByAltText("检测前原图")).not.toBeInTheDocument();
+  });
+
+  it("closes the delete card without deleting when cancelled or Escape is pressed", async () => {
+    const api = client();
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} />);
+
+    const deleteButton = await screen.findByRole("button", {
+      name: "删除 T20260920-0100",
+    });
+    await user.click(deleteButton);
+    await user.click(screen.getByRole("button", { name: "取消删除" }));
+    expect(screen.queryByRole("dialog", { name: "确认删除任务" })).not.toBeInTheDocument();
+
+    await user.click(deleteButton);
+    expect(screen.getByRole("dialog", { name: "确认删除任务" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "确认删除任务" })).not.toBeInTheDocument();
+    expect(api.deleteTask).not.toHaveBeenCalled();
   });
 });

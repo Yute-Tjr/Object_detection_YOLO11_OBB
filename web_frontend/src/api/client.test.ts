@@ -75,4 +75,16 @@ describe("apiClient", () => {
 
     expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
   });
+
+  it("deletes a task and accepts an empty 204 response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(apiClient.deleteTask("task/1")).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tasks/task%2F1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
 });

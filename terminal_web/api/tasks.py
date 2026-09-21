@@ -7,7 +7,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.exc import SQLAlchemyError
 
 from terminal_web.api.dependencies import (
@@ -153,6 +163,31 @@ def list_tasks(
         offset=offset,
         limit=limit,
     )
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: uuid.UUID,
+    repository: Annotated[TaskRepository, Depends(get_repository)],
+    storage: Annotated[ArtifactStorage, Depends(get_storage)],
+) -> Response:
+    task = repository.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="task not found")
+    if task.status in {TaskStatus.queued.value, TaskStatus.running.value}:
+        raise HTTPException(status_code=409, detail="active task cannot be deleted")
+
+    quarantined = storage.quarantine_task(task_id)
+    try:
+        repository.delete_task(task)
+        repository.session.commit()
+    except SQLAlchemyError as exc:
+        repository.session.rollback()
+        storage.restore_task(task_id, quarantined)
+        raise HTTPException(status_code=503, detail="database is unavailable") from exc
+
+    storage.purge_quarantined_task(quarantined)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/{task_id}", response_model=TaskDetail)
