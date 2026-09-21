@@ -1,0 +1,28 @@
+[project]
+name = "object-detection"
+version = "0.1.0"
+description = "端子分区域目标检测与异常分类系统"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "alembic==1.20.0",
+    "fastapi==0.141.1",
+    "httpx==0.28.1",
+    "numpy==2.4.6",
+    "opencv-python==4.13.0.92",
+    "openpyxl==3.1.5",
+    "pillow==12.2.0",
+    "psycopg[binary]==3.3.6",
+    "pydantic==2.13.5",
+    "pydantic-settings==2.15.0",
+    "python-multipart==0.0.32",
+    "PyYAML==6.0.3",
+    "SQLAlchemy==2.0.54",
+    "torch==2.12.0",
+    "torchvision==0.27.0",
+    "ultralytics==8.4.69",
+    "uvicorn[standard]==0.53.0",
+]
+
+[tool.uv]
+package = false

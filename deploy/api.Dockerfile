@@ -10,8 +10,8 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-web.txt ./
-RUN pip install -r requirements-web.txt
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
 
 COPY alembic.ini ./
 COPY migrations ./migrations

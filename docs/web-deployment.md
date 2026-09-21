@@ -76,7 +76,7 @@ MAX_IMAGES_PER_TASK=100
 
 ```bash
 /home/tjr/miniconda3/bin/python -c 'import fastapi, psycopg, sqlalchemy, torch, torchvision, ultralytics; print("runtime ok")'
-/home/tjr/miniconda3/bin/python -m pip install -r requirements-web.txt
+/home/tjr/miniconda3/bin/python -m pip install -r requirements.txt
 sudo systemctl start terminal-api.service
 ```
 
