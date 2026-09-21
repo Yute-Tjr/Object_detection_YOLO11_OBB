@@ -1,0 +1,33 @@
+# 版本控制与本地开发环境
+.git/
+.github/
+.idea/
+.vscode/
+.venv/
+.env
+.env.*
+
+# Python / Node 构建缓存
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+web_frontend/node_modules/
+web_frontend/dist/
+
+# 运行时数据、模型与实验产物（容器运行时通过卷挂载）
+backups/
+datasets/
+outputs/
+runs/
+var/
+weights/
+*.pt
+*.pth
+
+# 与镜像构建无关的资料
+archive/
+docs/
+tests/
+.DS_Store
+**/.DS_Store

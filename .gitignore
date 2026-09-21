@@ -1,6 +1,8 @@
 /runs/
 /weights/
 /var/
+/backups/
+/.env.backup.*
 .env
 /yolo11n-obb.pt
 /yolo11s-obb.pt

@@ -22,18 +22,45 @@ test -s weights/classifiers/label5/resnet18_best.pt
 
 网页单任务限制为 100 张图片（`MAX_IMAGES_PER_TASK=100`）。Nginx 请求体上限为 2 GiB，用于覆盖 100 张生产图；若现场单批文件可能超过 2 GiB，需要同时调整 `deploy/nginx.conf`，而不是只改前端提示。
 
-## 2. Docker Compose 启动
+## 2. Docker Compose 一键部署与更新
 
-复制环境示例并至少修改 PostgreSQL 密码和 GPU 设备：
+推荐从仓库根目录运行交互式向导：
 
 ```bash
-cp .env.example .env
-printf '\nPOSTGRES_PASSWORD=请替换为强密码\nDETECTION_DEVICE=0\nCLASSIFICATION_DEVICE=0\n' >> .env
-docker compose config
-docker compose build
-docker compose up -d postgres
-docker compose run --rm api alembic upgrade head
-docker compose up -d api worker frontend
+./deploy.sh
+```
+
+首次部署时，向导会：
+
+1. 检查 Docker、Docker Compose、权重和 GPU；
+2. 询问数据库名称、用户名，并隐藏输入和二次确认密码；
+3. 为设备、端口、输入尺寸和单任务图片数提供默认值；
+4. 生成权限为 `600` 的 `.env`；
+5. 构建镜像、初始化 PostgreSQL、执行迁移并启动服务；
+6. 等待 API、Worker 模型和前端健康检查通过。
+
+新建数据库密码至少 12 位，并限定为 URL 安全的字母、数字、点、下划线、波浪线和连字符；交互模式必须输入两次。脚本拒绝把 `.env.example` 的占位密码用于首次部署，也不会在摘要或日志中显示密码。若已有数据库仍使用旧的短密码，更新模式会保留原凭据并给出轮换提醒，因为只修改 `.env` 并不能修改数据库内部密码。查看执行计划但不写配置、不启动容器：
+
+```bash
+./deploy.sh --dry-run
+```
+
+当 `.env` 和 `terminal-inspection_postgres-data` 数据卷同时存在时，脚本自动进入更新模式。更新默认复用数据库凭据，可选择使用 `git pull --ff-only` 拉取当前上游；拉取成功后会重新载入新版部署脚本。随后依次启动数据库、备份 PostgreSQL、构建镜像、停止旧 API/Worker、迁移、清除旧 Worker 就绪状态并重启服务。若存在未提交的已跟踪文件，脚本拒绝自动拉取。
+
+脚本只更新自己管理的 Docker 字段；若 `.env` 原本含有供 uv/Conda 原生启动使用的 `DATABASE_URL`，会将其同步到本次 PostgreSQL 用户、密码和端口，同时保留权重路径、存储路径及其他自定义配置。真实部署会拒绝符号链接或非当前用户所有的 `.env`，并将权限收紧为 `600`；更新前还会保留一份权限为 `600` 的配置备份。
+
+CPU 是基础 Compose 配置；当 `DETECTION_DEVICE` 或 `CLASSIFICATION_DEVICE` 为 GPU 编号时，脚本自动叠加 `compose.gpu.yaml`。GPU 模式会先检查宿主机 GPU 编号，再在构建完成后、停止旧服务前验证 Worker 容器中的 CUDA，因此服务器必须安装 NVIDIA 驱动和 NVIDIA Container Toolkit。
+
+高级用途仍可手动执行 Compose。CPU 模式：
+
+```bash
+docker compose --env-file .env -f compose.yaml up -d --build
+```
+
+GPU 模式：
+
+```bash
+docker compose --env-file .env -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
 
 打开 `http://服务器地址:8080`。健康检查：

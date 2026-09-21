@@ -18,6 +18,7 @@ COPY migrations ./migrations
 COPY terminal_web ./terminal_web
 COPY scripts ./scripts
 COPY obb_detection ./obb_detection
+COPY yolo11_obb ./yolo11_obb
 
 RUN useradd --create-home --uid 10001 terminal \
     && mkdir -p /data/terminal-inspection \

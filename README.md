@@ -139,6 +139,24 @@ uv run python scripts/start_terminal_web.py \
 
 Conda 路线激活环境后，将上述命令中的 `uv run python` 替换为 `python`。
 
+### 3.4 Docker 一键部署与更新
+
+Docker 部署不需要手动编辑完整 `.env`。在项目根目录执行：
+
+```bash
+./deploy.sh
+```
+
+首次运行时，向导会询问数据库名称、用户名和两次隐藏密码，并为设备、端口、输入尺寸和单任务图片数提供默认值。配置完成后，它会检查 Docker、三个权重和 GPU，生成权限为 `600` 的 `.env`，再构建镜像、初始化 PostgreSQL、执行 Alembic 迁移并启动 API、Worker 和前端。
+
+当 `.env` 和 PostgreSQL 数据卷已经存在时，同一命令会自动进入更新模式：复用数据库凭据，可选择拉取当前 Git 上游，先备份数据库，再构建、迁移和健康检查。查看计划但不产生写入：
+
+```bash
+./deploy.sh --dry-run
+```
+
+CPU 部署默认使用 `compose.yaml`；只要检测或分类设备设置为 GPU 编号，向导就会自动叠加 `compose.gpu.yaml`。Docker 部署细节见 [部署文档](docs/web-deployment.md)。
+
 ## 4. 网页功能
 
 - 单次上传 1–100 张 JPG、PNG 或 BMP 图片；
@@ -213,11 +231,11 @@ npm run build
 - [Docker Compose、systemd、Nginx、备份和回滚](docs/web-deployment.md)
 - [完整模型选型、实验结果和旧版网页说明](docs/archive/06_model_selection_and_web_snapshot_20260921.md)
 
-生产环境可以使用 Docker Compose：
+生产环境推荐使用交互式部署向导：
 
 ```bash
-docker compose up -d --build
+./deploy.sh
 curl -fsS http://127.0.0.1:8080/api/v1/health
 ```
 
-Compose 中 API 启动时会自动执行数据库迁移。不要执行 `docker compose down -v`，该命令会删除 PostgreSQL 和检测文件的持久卷。
+向导会自动区分首次部署和更新，更新前备份 PostgreSQL，并等待 API、Worker 模型和前端全部就绪。不要执行 `docker compose down -v`，该命令会删除 PostgreSQL 和检测文件的持久卷。

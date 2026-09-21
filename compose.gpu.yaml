@@ -1,0 +1,11 @@
+services:
+  worker:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 暴露全部 GPU，确保 DETECTION_DEVICE/CLASSIFICATION_DEVICE
+              # 使用宿主机编号（例如 6）时不会被重映射为容器内的 0。
+              count: all
+              capabilities: [gpu]
