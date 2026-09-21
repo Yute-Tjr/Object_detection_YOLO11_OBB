@@ -11,10 +11,8 @@ from terminal_web.inference import rendering
 from terminal_web.inference.rendering import (
     NG_COLOR,
     OK_COLOR,
-    UNSUPPORTED_COLOR,
     annotation_style,
     format_region_label,
-    label_origin,
     render_prediction,
 )
 from terminal_web.inference.types import (
@@ -62,33 +60,6 @@ class RenderingTest(unittest.TestCase):
         self.assertFalse(supports_cjk)
         self.assertGreaterEqual(text_box[3] - text_box[1], 20)
 
-    def test_label_origin_prefers_right_side(self):
-        self.assertEqual(
-            label_origin(
-                ((10, 20), (60, 20), (60, 80), (10, 80)),
-                40,
-                18,
-                200,
-                120,
-            ),
-            (68, 41),
-        )
-
-    def test_label_origin_falls_back_left_and_clamps_to_canvas(self):
-        x, y = label_origin(
-            ((150, 0), (195, 0), (195, 40), (150, 40)),
-            100,
-            24,
-            200,
-            80,
-        )
-
-        self.assertGreaterEqual(x, 0)
-        self.assertLessEqual(x + 100, 200)
-        self.assertGreaterEqual(y, 0)
-        self.assertLessEqual(y + 24, 80)
-        self.assertLess(x, 150)
-
     def test_format_labels_match_factory_semantics(self):
         square = ((0, 0), (10, 0), (10, 10), (0, 10))
         self.assertEqual(
@@ -115,7 +86,34 @@ class RenderingTest(unittest.TestCase):
             "label3 · 分类失败",
         )
 
-    def test_border_pixels_use_green_red_and_gray(self):
+    def test_long_label_is_rendered_outside_the_source_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.png"
+            output = root / "result.png"
+            source_image = np.full((160, 180, 3), 255, np.uint8)
+            self.assertTrue(cv2.imwrite(str(source), source_image))
+            prediction = ImagePrediction(
+                (
+                    region(
+                        "label1_thick",
+                        ((50, 50), (130, 50), (130, 110), (50, 110)),
+                        selected=False,
+                    ),
+                ),
+                OverallResult.unknown,
+                (),
+            )
+
+            render_prediction(source, prediction, output)
+
+            rendered = cv2.imread(str(output))
+            self.assertGreater(rendered.shape[1], source_image.shape[1])
+            self.assertEqual(tuple(rendered[80, 90]), (255, 255, 255))
+            gutter = rendered[:, source_image.shape[1] :]
+            self.assertTrue(np.any(np.all(gutter == (255, 119, 22), axis=2)))
+
+    def test_border_pixels_use_green_red_and_blue(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "source.png"
@@ -147,4 +145,4 @@ class RenderingTest(unittest.TestCase):
             rendered = cv2.imread(str(output))
             self.assertEqual(tuple(rendered[50, 35]), OK_COLOR)
             self.assertEqual(tuple(rendered[50, 120]), NG_COLOR)
-            self.assertEqual(tuple(rendered[140, 35]), UNSUPPORTED_COLOR)
+            self.assertEqual(tuple(rendered[140, 35]), (255, 119, 22))

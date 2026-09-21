@@ -71,8 +71,6 @@ export function ImageComparison({
               <img
                 src={image.resultUrl}
                 alt="检测后结果"
-                width={image.width}
-                height={image.height}
               />
             ) : (
               <div className="result-placeholder">

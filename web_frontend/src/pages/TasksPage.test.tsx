@@ -138,8 +138,8 @@ describe("TasksPage", () => {
     expect(screen.getByRole("button", { name: "下一张图片" })).toBeInTheDocument();
     expect(screen.getByAltText("检测前原图")).toHaveAttribute("width", "1440");
     expect(screen.getByAltText("检测前原图")).toHaveAttribute("height", "3072");
-    expect(screen.getByAltText("检测后结果")).toHaveAttribute("width", "1440");
-    expect(screen.getByAltText("检测后结果")).toHaveAttribute("height", "3072");
+    expect(screen.getByAltText("检测后结果")).not.toHaveAttribute("width");
+    expect(screen.getByAltText("检测后结果")).not.toHaveAttribute("height");
   });
 
   it("requires operator and clears metadata only after creation succeeds", async () => {
