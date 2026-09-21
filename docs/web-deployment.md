@@ -47,7 +47,7 @@ test -s weights/classifiers/label5/resnet18_best.pt
 
 当 `.env` 和 `terminal-inspection_postgres-data` 数据卷同时存在时，脚本自动进入更新模式。更新默认复用数据库凭据，可选择使用 `git pull --ff-only` 拉取当前上游；拉取成功后会重新载入新版部署脚本。随后依次启动数据库、备份 PostgreSQL、构建镜像、停止旧 API/Worker、迁移、清除旧 Worker 就绪状态并重启服务。若存在未提交的已跟踪文件，脚本拒绝自动拉取。
 
-脚本只更新自己管理的 Docker 字段；若 `.env` 原本含有供 uv/Conda 原生启动使用的 `DATABASE_URL`，会将其同步到本次 PostgreSQL 用户、密码和端口，同时保留权重路径、存储路径及其他自定义配置。真实部署会拒绝符号链接或非当前用户所有的 `.env`，并将权限收紧为 `600`；更新前还会保留一份权限为 `600` 的配置备份。
+脚本只更新自己管理的 Docker 字段；若 `.env` 原本含有供 uv/Conda 原生启动使用的 `DATABASE_URL`，会将其同步到本次 PostgreSQL 用户、密码和端口，同时保留权重路径、存储路径及其他自定义配置。真实部署会拒绝符号链接或非当前用户所有的 `.env`，并将权限收紧为 `600`；更新前还会在 `backups/env/` 中保留一份权限为 `600` 的配置备份。
 
 CPU 是基础 Compose 配置；当 `DETECTION_DEVICE` 或 `CLASSIFICATION_DEVICE` 为 GPU 编号时，脚本自动叠加 `compose.gpu.yaml`。GPU 模式会先检查宿主机 GPU 编号，再在构建完成后、停止旧服务前验证 Worker 容器中的 CUDA，因此服务器必须安装 NVIDIA 驱动和 NVIDIA Container Toolkit。
 
@@ -63,7 +63,7 @@ GPU 模式：
 docker compose --env-file .env -f compose.yaml -f compose.gpu.yaml up -d --build
 ```
 
-打开 `http://服务器地址:8080`。健康检查：
+本机打开 `http://127.0.0.1:8080/tasks`。如果部署在远程服务器，将 `127.0.0.1` 替换为服务器 IP。健康检查：
 
 ```bash
 curl -fsS http://127.0.0.1:8080/api/v1/health
@@ -94,8 +94,6 @@ LABEL3_CLASSIFIER_WEIGHTS=/opt/terminal-inspection/current/weights/classifiers/l
 LABEL5_CLASSIFIER_WEIGHTS=/opt/terminal-inspection/current/weights/classifiers/label5/resnet18_best.pt
 DETECTION_DEVICE=0
 CLASSIFICATION_DEVICE=0
-DETECTION_IMGSZ=1280
-CLASSIFICATION_IMGSZ=224
 MAX_IMAGES_PER_TASK=100
 ```
 

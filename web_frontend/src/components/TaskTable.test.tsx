@@ -98,4 +98,11 @@ describe("TaskTable", () => {
 
     expect(onPreview).toHaveBeenCalledWith(tasks[0]);
   });
+
+  it("always displays task timestamps in Beijing time", async () => {
+    const successTask = tasks[1];
+    render(<TaskTable tasks={[successTask]} onSelectTask={vi.fn()} initialFilter="all" />);
+
+    expect(screen.getByText("2026-09-20 09:24")).toBeInTheDocument();
+  });
 });

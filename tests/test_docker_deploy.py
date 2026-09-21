@@ -4,6 +4,7 @@ import stat
 import subprocess
 import tempfile
 import unittest
+import unicodedata
 from pathlib import Path
 
 import yaml
@@ -13,11 +14,19 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "deploy.sh"
 
 
+def terminal_display_width(text: str) -> int:
+    return sum(
+        2 if unicodedata.east_asian_width(character) in {"W", "F"} else 1
+        for character in text
+    )
+
+
 def run_bash(source: str, *args: Path | str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["bash", "-c", source, "test", *(str(arg) for arg in args)],
         cwd=ROOT,
         text=True,
+        errors="replace",
         capture_output=True,
         check=False,
     )
@@ -44,6 +53,13 @@ def fake_docker_environment(root: Path, *, volume_exists: bool) -> dict[str, str
     docker.write_text(
         """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "${FAKE_DOCKER_LOG}"
+if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_TRANSIENT:-false}" == "true" ]]; then
+    if [[ ! -e "${FAKE_BUILD_MARKER}" ]]; then
+        : > "${FAKE_BUILD_MARKER}"
+        echo 'failed to dial gRPC: header key "x-docker-expose-session-sharedkey" contains value with non-printable ASCII characters' >&2
+        exit 1
+    fi
+fi
 if [[ "$1 $2" == "compose version" ]]; then
     echo "Docker Compose version v2.35.1"
     exit 0
@@ -104,6 +120,73 @@ exit 0
 
 
 class DockerDeployScriptTest(unittest.TestCase):
+    def test_banner_lines_have_the_same_terminal_display_width(self):
+        for title in (
+            "首次部署 · Docker Compose",
+            "首次部署 · 复用已有配置",
+            "更新部署 · Docker Compose",
+            "安全检查未通过",
+        ):
+            with self.subTest(title=title):
+                result = run_bash('source "$1"; banner "$2"', SCRIPT, title)
+                banner_lines = [line for line in result.stdout.splitlines() if line]
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(len(banner_lines), 4)
+                self.assertEqual(
+                    [terminal_display_width(line) for line in banner_lines],
+                    [46, 46, 46, 46],
+                )
+
+    def test_failed_logged_step_prints_numeric_exit_code_without_unbound_variable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_file = Path(directory) / "deploy.log"
+            command = """
+                source "$1"
+                LOG_FILE="$2"
+                : > "$LOG_FILE"
+                run_logged_step "07/10" "测试失败步骤" bash -c 'exit 7'
+            """
+
+            result = run_bash(command, SCRIPT, log_file)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("退出码 7", result.stdout + result.stderr)
+        self.assertNotIn("unbound variable", result.stdout + result.stderr)
+
+    def test_progress_frame_contains_an_indeterminate_bar_and_elapsed_time(self):
+        result = run_bash('source "$1"; progress_frame 7', SCRIPT)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("[", result.stdout)
+        self.assertIn("]", result.stdout)
+        self.assertIn("已用时 7 秒", result.stdout)
+
+    def test_transient_buildkit_shared_key_error_is_retried_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_BUILD_TRANSIENT"] = "true"
+            env["FAKE_BUILD_MARKER"] = str(project / "build-failed-once")
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(commands.count(" build --pull api\n"), 2)
+        self.assertEqual(commands.count(" build --pull worker\n"), 1)
+        self.assertEqual(commands.count(" build --pull frontend\n"), 1)
+        self.assertIn("BuildKit 会话异常，自动重试一次", result.stdout)
+
     def test_detects_first_install_configured_install_update_and_orphaned_volume(self):
         with tempfile.TemporaryDirectory() as directory:
             env_file = Path(directory) / ".env"
@@ -210,7 +293,31 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertIn("POSTGRES_USER=terminal_operator", contents)
         self.assertIn("POSTGRES_PASSWORD=SafePass_2026", contents)
         self.assertIn("DETECTION_DEVICE=0", contents)
+        self.assertNotIn("DETECTION_IMGSZ=", contents)
+        self.assertNotIn("CLASSIFICATION_IMGSZ=", contents)
         self.assertNotIn("DATABASE_URL=", contents)
+
+    def test_environment_backup_is_stored_outside_the_project_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            env_file = project / ".env"
+            env_file.write_text("ORIGINAL=value\n", encoding="utf-8")
+            command = """
+                source "$1"
+                PROJECT_ROOT="$2"
+                ENV_FILE="$3"
+                backup_environment_file
+            """
+
+            result = run_bash(command, SCRIPT, project, env_file)
+            backups = list((project / "backups" / "env").glob(".env.*.backup"))
+            backup_content = backups[0].read_text(encoding="utf-8") if backups else ""
+            root_backup_exists = (project / ".env.backup").exists()
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backup_content, "ORIGINAL=value\n")
+        self.assertFalse(root_backup_exists)
 
     def test_environment_update_keeps_native_database_url_in_sync_and_preserves_custom_settings(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -289,6 +396,7 @@ class DockerDeployScriptTest(unittest.TestCase):
 
         worker = base["services"]["worker"]
         postgres = base["services"]["postgres"]
+        api_environment = base["services"]["api"]["environment"]
         gpu_worker = overlay["services"]["worker"]
 
         self.assertNotIn("deploy", worker)
@@ -297,6 +405,11 @@ class DockerDeployScriptTest(unittest.TestCase):
             postgres["ports"],
             ["${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"],
         )
+        self.assertEqual(postgres["command"], ["postgres", "-c", "timezone=Asia/Shanghai"])
+        self.assertEqual(postgres["environment"]["TZ"], "Asia/Shanghai")
+        self.assertEqual(api_environment["TZ"], "Asia/Shanghai")
+        self.assertEqual(api_environment["DETECTION_IMGSZ"], "1280")
+        self.assertEqual(api_environment["CLASSIFICATION_IMGSZ"], "224")
         self.assertEqual(
             gpu_worker["deploy"]["resources"]["reservations"]["devices"][0][
                 "driver"
@@ -594,10 +707,14 @@ exit 0
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("部署完成", result.stdout)
+        self.assertIn("http://127.0.0.1:8080/tasks", result.stdout)
         self.assertIn("正在执行，详细输出写入", result.stdout)
         self.assertIn("info\n", commands)
         self.assertIn("config --quiet", commands)
-        self.assertIn("build --pull api worker frontend", commands)
+        self.assertIn("build --pull api", commands)
+        self.assertIn("build --pull worker", commands)
+        self.assertIn("build --pull frontend", commands)
+        self.assertNotIn("build --pull api worker frontend", commands)
         self.assertIn("up -d postgres", commands)
         self.assertIn("run --rm api alembic upgrade head", commands)
         self.assertIn("up -d --remove-orphans api worker frontend", commands)

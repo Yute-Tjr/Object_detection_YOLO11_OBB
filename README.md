@@ -205,6 +205,7 @@ React/Vite -> FastAPI -> PostgreSQL
 - 网页检测模型使用 `datasets/obb_thin_thick` 对应的 7 类定义。
 - YOLO 主数据集包含 198 张训练图片和 53 张测试图片。
 - PostgreSQL 保存任务、图片状态和结构化检测结果。
+- 数据库保存带时区的绝对时间，网页和 Docker PostgreSQL 统一按北京时间显示。
 - `INSPECTION_STORAGE_ROOT` 保存上传原图、裁剪图、标注结果图和 Worker 就绪信息。
 - 服务器备份必须同时覆盖 PostgreSQL 和整个 artifact 目录。
 

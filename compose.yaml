@@ -4,10 +4,12 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    command: ["postgres", "-c", "timezone=Asia/Shanghai"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-terminal_inspection}
       POSTGRES_USER: ${POSTGRES_USER:-terminal}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-terminal}
+      TZ: Asia/Shanghai
     ports:
       - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -25,6 +27,7 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "alembic upgrade head && python scripts/run_terminal_api.py --host 0.0.0.0 --port 8000"]
     environment: &terminal-environment
+      TZ: Asia/Shanghai
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-terminal}:${POSTGRES_PASSWORD:-terminal}@postgres:5432/${POSTGRES_DB:-terminal_inspection}
       INSPECTION_STORAGE_ROOT: /data/terminal-inspection
       DETECTOR_WEIGHTS: /weights/detector/yolo11l_obb_best.pt
@@ -32,8 +35,8 @@ services:
       LABEL5_CLASSIFIER_WEIGHTS: /weights/classifiers/label5/resnet18_best.pt
       DETECTION_DEVICE: ${DETECTION_DEVICE:-cpu}
       CLASSIFICATION_DEVICE: ${CLASSIFICATION_DEVICE:-cpu}
-      DETECTION_IMGSZ: ${DETECTION_IMGSZ:-1280}
-      CLASSIFICATION_IMGSZ: ${CLASSIFICATION_IMGSZ:-224}
+      DETECTION_IMGSZ: "1280"
+      CLASSIFICATION_IMGSZ: "224"
       MAX_IMAGES_PER_TASK: ${MAX_IMAGES_PER_TASK:-100}
     volumes:
       - ./weights:/weights:ro

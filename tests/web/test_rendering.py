@@ -1,15 +1,18 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import cv2
 import numpy as np
 
 from terminal_web.domain import OverallResult
+from terminal_web.inference import rendering
 from terminal_web.inference.rendering import (
     NG_COLOR,
     OK_COLOR,
     UNSUPPORTED_COLOR,
+    annotation_style,
     format_region_label,
     label_origin,
     render_prediction,
@@ -47,6 +50,18 @@ def region(
 
 
 class RenderingTest(unittest.TestCase):
+    def test_annotation_style_scales_for_tall_factory_images(self):
+        self.assertEqual(annotation_style(506, 1627), (30, 3))
+        self.assertEqual(annotation_style(1440, 3072), (54, 6))
+
+    def test_fallback_font_keeps_requested_readable_size(self):
+        with patch.object(rendering, "_CJK_FONT_CANDIDATES", ()):
+            font, supports_cjk = rendering._load_font(None, 30)
+
+        text_box = font.getbbox("label3 - NG")
+        self.assertFalse(supports_cjk)
+        self.assertGreaterEqual(text_box[3] - text_box[1], 20)
+
     def test_label_origin_prefers_right_side(self):
         self.assertEqual(
             label_origin(

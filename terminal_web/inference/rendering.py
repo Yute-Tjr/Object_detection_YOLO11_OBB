@@ -79,7 +79,18 @@ def _load_font(configured: Path | None, size: int):
                 return ImageFont.truetype(str(candidate), size=size), True
             except OSError:
                 continue
-    return ImageFont.load_default(), False
+    try:
+        return ImageFont.load_default(size=size), False
+    except TypeError:  # Pillow < 10.1 does not expose the size argument.
+        return ImageFont.load_default(), False
+
+
+def annotation_style(image_width: int, image_height: int) -> tuple[int, int]:
+    """Return a readable font size and outline width for the source image."""
+    short_side = min(image_width, image_height)
+    font_size = min(54, max(30, round(short_side * 0.06)))
+    line_thickness = min(6, max(2, round(short_side * 0.006)))
+    return font_size, line_thickness
 
 
 def render_prediction(
@@ -88,11 +99,14 @@ def render_prediction(
     output: Path,
     *,
     cjk_font_path: Path | None = None,
-    line_thickness: int = 2,
+    line_thickness: int | None = None,
 ) -> None:
     image = cv2.imread(str(source))
     if image is None:
         raise ValueError(f"failed to read image: {source}")
+
+    font_size, automatic_thickness = annotation_style(image.shape[1], image.shape[0])
+    line_thickness = line_thickness or automatic_thickness
 
     for region in prediction.regions:
         points = np.asarray(region.points, dtype=np.int32).reshape((-1, 1, 2))
@@ -105,7 +119,7 @@ def render_prediction(
             lineType=cv2.LINE_AA,
         )
 
-    font, supports_cjk = _load_font(cjk_font_path, size=18)
+    font, supports_cjk = _load_font(cjk_font_path, size=font_size)
     canvas = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(canvas)
     for region in prediction.regions:
@@ -115,8 +129,10 @@ def render_prediction(
         text_box = draw.textbbox((0, 0), text, font=font)
         text_width = text_box[2] - text_box[0]
         text_height = text_box[3] - text_box[1]
-        label_width = text_width + 12
-        label_height = text_height + 8
+        horizontal_padding = max(8, round(font_size * 0.34))
+        vertical_padding = max(6, round(font_size * 0.22))
+        label_width = text_width + horizontal_padding * 2
+        label_height = text_height + vertical_padding * 2
         x, y = label_origin(
             region.points,
             label_width,
@@ -126,10 +142,15 @@ def render_prediction(
         )
         draw.rounded_rectangle(
             (x, y, x + label_width, y + label_height),
-            radius=3,
+            radius=max(3, round(font_size * 0.16)),
             fill=color_rgb,
         )
-        draw.text((x + 6, y + 3), text, font=font, fill=(255, 255, 255))
+        draw.text(
+            (x + horizontal_padding, y + vertical_padding),
+            text,
+            font=font,
+            fill=(255, 255, 255),
+        )
 
     rendered = cv2.cvtColor(np.asarray(canvas), cv2.COLOR_RGB2BGR)
     output = Path(output)

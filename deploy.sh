@@ -78,9 +78,28 @@ section() {
 
 banner() {
     local title=$1
+    local left_padding=2
+    local right_padding=2
+
+    case "$title" in
+        "首次部署 · Docker Compose"|"更新部署 · Docker Compose")
+            left_padding=9
+            right_padding=10
+            ;;
+        "首次部署 · 复用已有配置")
+            left_padding=10
+            right_padding=11
+            ;;
+        "安全检查未通过")
+            left_padding=15
+            right_padding=15
+            ;;
+    esac
+
     printf '\n%s%s╭────────────────────────────────────────────╮%s\n' "$BLUE" "$BOLD" "$RESET"
     printf '%s%s│          端子智能检测系统部署向导          │%s\n' "$BLUE" "$BOLD" "$RESET"
-    printf '%s%s│          %-34s│%s\n' "$BLUE" "$BOLD" "$title" "$RESET"
+    printf '%s%s│%*s%s%*s│%s\n' \
+        "$BLUE" "$BOLD" "$left_padding" "" "$title" "$right_padding" "" "$RESET"
     printf '%s%s╰────────────────────────────────────────────╯%s\n' "$BLUE" "$BOLD" "$RESET"
 }
 
@@ -170,12 +189,27 @@ write_env_file() {
         printf 'WEB_PORT=%s\n' "$WEB_PORT"
         printf 'DETECTION_DEVICE=%s\n' "$DETECTION_DEVICE"
         printf 'CLASSIFICATION_DEVICE=%s\n' "$CLASSIFICATION_DEVICE"
-        printf 'DETECTION_IMGSZ=%s\n' "$DETECTION_IMGSZ"
-        printf 'CLASSIFICATION_IMGSZ=%s\n' "$CLASSIFICATION_IMGSZ"
         printf 'MAX_IMAGES_PER_TASK=%s\n' "$MAX_IMAGES_PER_TASK"
     } >"$temporary"
     chmod 600 "$temporary"
     mv "$temporary" "$destination"
+}
+
+
+backup_environment_file() {
+    local backup_dir="$PROJECT_ROOT/backups/env"
+    local stamp temporary backup_file
+
+    [[ -f "$ENV_FILE" ]] || return 0
+    mkdir -p "$backup_dir"
+    stamp=$(date '+%Y%m%d-%H%M%S')
+    temporary=$(mktemp "$backup_dir/.env.${stamp}.XXXXXX") \
+        || fatal "无法创建 .env 备份文件。"
+    backup_file="${temporary}.backup"
+    cp "$ENV_FILE" "$temporary"
+    chmod 600 "$temporary"
+    mv "$temporary" "$backup_file"
+    success ".env 已备份到 ${backup_file#"$PROJECT_ROOT/"}"
 }
 
 
@@ -190,7 +224,7 @@ load_env_file() {
         key=${line%%=*}
         value=${line#*=}
         case "$key" in
-            POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_BIND_ADDRESS|POSTGRES_PORT|WEB_PORT|DETECTION_DEVICE|CLASSIFICATION_DEVICE|DETECTION_IMGSZ|CLASSIFICATION_IMGSZ|MAX_IMAGES_PER_TASK)
+            POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_BIND_ADDRESS|POSTGRES_PORT|WEB_PORT|DETECTION_DEVICE|CLASSIFICATION_DEVICE|MAX_IMAGES_PER_TASK)
                 printf -v "$key" '%s' "$value"
                 export "$key"
                 ;;
@@ -251,12 +285,10 @@ set_config_defaults() {
     WEB_PORT=${WEB_PORT:-8080}
     DETECTION_DEVICE=${DETECTION_DEVICE:-$(detect_default_device)}
     CLASSIFICATION_DEVICE=${CLASSIFICATION_DEVICE:-$DETECTION_DEVICE}
-    DETECTION_IMGSZ=${DETECTION_IMGSZ:-1280}
-    CLASSIFICATION_IMGSZ=${CLASSIFICATION_IMGSZ:-224}
     MAX_IMAGES_PER_TASK=${MAX_IMAGES_PER_TASK:-100}
     export POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_BIND_ADDRESS
     export POSTGRES_PORT WEB_PORT DETECTION_DEVICE CLASSIFICATION_DEVICE
-    export DETECTION_IMGSZ CLASSIFICATION_IMGSZ MAX_IMAGES_PER_TASK
+    export MAX_IMAGES_PER_TASK
 }
 
 
@@ -340,8 +372,6 @@ configure_initial_install() {
 
     section "04/10" "其他配置"
     prompt_default WEB_PORT "网页端口" "8080"
-    prompt_default DETECTION_IMGSZ "检测输入尺寸" "1280"
-    prompt_default CLASSIFICATION_IMGSZ "分类输入尺寸" "224"
     prompt_default MAX_IMAGES_PER_TASK "单任务最大图片数" "100"
     CONFIG_CHANGED=true
 }
@@ -349,14 +379,12 @@ configure_initial_install() {
 
 configure_update() {
     success "复用现有数据库凭据"
-    if prompt_yes_no "是否修改设备、端口或图片尺寸？" "no"; then
+    if prompt_yes_no "是否修改设备、端口或任务上限？" "no"; then
         section "03/10" "修改运行配置"
         prompt_default DETECTION_DEVICE "检测模型设备" "$DETECTION_DEVICE"
         prompt_default CLASSIFICATION_DEVICE "分类模型设备" "$CLASSIFICATION_DEVICE"
         prompt_default WEB_PORT "网页端口" "$WEB_PORT"
         prompt_default POSTGRES_PORT "数据库端口" "$POSTGRES_PORT"
-        prompt_default DETECTION_IMGSZ "检测输入尺寸" "$DETECTION_IMGSZ"
-        prompt_default CLASSIFICATION_IMGSZ "分类输入尺寸" "$CLASSIFICATION_IMGSZ"
         prompt_default MAX_IMAGES_PER_TASK "单任务最大图片数" "$MAX_IMAGES_PER_TASK"
         CONFIG_CHANGED=true
     fi
@@ -382,8 +410,6 @@ validate_configuration() {
     validate_port "$WEB_PORT" || fatal "网页端口无效。"
     validate_device "$DETECTION_DEVICE" || fatal "检测设备必须是 cpu 或非负 GPU 编号。"
     validate_device "$CLASSIFICATION_DEVICE" || fatal "分类设备必须是 cpu 或非负 GPU 编号。"
-    validate_positive_integer "$DETECTION_IMGSZ" || fatal "检测输入尺寸必须是正整数。"
-    validate_positive_integer "$CLASSIFICATION_IMGSZ" || fatal "分类输入尺寸必须是正整数。"
     validate_positive_integer "$MAX_IMAGES_PER_TASK" || fatal "单任务图片数必须是正整数。"
     (( MAX_IMAGES_PER_TASK <= 100 )) || fatal "单任务最大图片数不能超过 100。"
 }
@@ -499,20 +525,93 @@ create_log_file() {
 }
 
 
+progress_frame() {
+    local elapsed=${1:-0}
+    local width=24
+    local block_width=6
+    local position=$(( elapsed % (width - block_width + 1) ))
+    local bar=""
+    local index
+
+    for (( index = 0; index < width; index++ )); do
+        if (( index >= position && index < position + block_width )); then
+            bar+="="
+        else
+            bar+="."
+        fi
+    done
+    printf '\r  %s[%s]%s 构建中 · 已用时 %d 秒' "$BLUE" "$bar" "$RESET" "$elapsed"
+}
+
+
+run_with_progress() {
+    if [[ ! -t 1 ]]; then
+        "$@" >>"$LOG_FILE" 2>&1
+        return
+    fi
+
+    "$@" >>"$LOG_FILE" 2>&1 &
+    local command_pid=$!
+    local started=$SECONDS
+    local status=0
+
+    trap 'kill "$command_pid" 2>/dev/null || true; wait "$command_pid" 2>/dev/null || true; printf "\n"; exit 130' INT TERM
+    while kill -0 "$command_pid" 2>/dev/null; do
+        progress_frame "$(( SECONDS - started ))"
+        sleep 1
+    done
+    wait "$command_pid" || status=$?
+    printf '\r\033[2K'
+    trap - INT TERM
+    return "$status"
+}
+
+
+execute_logged_command() {
+    local with_progress=$1
+    shift
+    if [[ "$with_progress" == "true" ]]; then
+        run_with_progress "$@"
+    else
+        "$@" >>"$LOG_FILE" 2>&1
+    fi
+}
+
+
 run_logged_step() {
     local number=$1
     local label=$2
     shift 2
+    local with_progress=false
+    [[ "$label" == "构建服务镜像" ]] && with_progress=true
     section "$number" "$label"
     info "正在执行，详细输出写入 $LOG_FILE"
-    if "$@" >>"$LOG_FILE" 2>&1; then
+    if execute_logged_command "$with_progress" "$@"; then
         success "$label 完成"
     else
         local status=$?
+        if [[ "$label" == "构建服务镜像" ]] \
+            && grep -Fq 'x-docker-expose-session-sharedkey' "$LOG_FILE" \
+            && grep -Fq 'non-printable ASCII characters' "$LOG_FILE"; then
+            warning "检测到 Docker BuildKit 会话异常，自动重试一次。"
+            if execute_logged_command "$with_progress" "$@"; then
+                success "$label 重试完成"
+                return 0
+            else
+                status=$?
+            fi
+        fi
         warning "详细错误日志：$LOG_FILE"
         tail -n 60 "$LOG_FILE" >&2 || true
-        fatal "$label 失败（退出码 $status）"
+        fatal "$label 失败（退出码 ${status}）"
     fi
+}
+
+
+build_service_images() {
+    compose build --pull api || return $?
+    compose build --pull worker || return $?
+    compose build --pull frontend
 }
 
 
@@ -624,7 +723,7 @@ run_deployment() {
         backup_database
     fi
 
-    run_logged_step "07/10" "构建服务镜像" compose build --pull api worker frontend
+    run_logged_step "07/10" "构建服务镜像" build_service_images
 
     if [[ "$DETECTION_DEVICE" != "cpu" || "$CLASSIFICATION_DEVICE" != "cpu" ]]; then
         run_logged_step "07/10" "验证容器 GPU 运行时" \
@@ -667,7 +766,7 @@ run_deployment() {
     fi
 
     printf '\n%s%s部署完成%s\n' "$GREEN" "$BOLD" "$RESET"
-    printf '网页地址：http://服务器地址:%s\n' "$WEB_PORT"
+    printf '网页地址：http://127.0.0.1:%s/tasks\n' "$WEB_PORT"
     printf '详细日志：%s\n' "$LOG_FILE"
     printf '实时日志：docker compose logs -f api worker frontend\n'
     printf '停止服务：docker compose down\n'
@@ -748,9 +847,7 @@ main() {
 
     if [[ "$CONFIG_CHANGED" == "true" ]]; then
         if [[ -f "$ENV_FILE" ]]; then
-            local env_backup="${ENV_FILE}.backup.$(date '+%Y%m%d-%H%M%S')"
-            cp "$ENV_FILE" "$env_backup"
-            chmod 600 "$env_backup"
+            backup_environment_file
         fi
         write_env_file "$ENV_FILE"
         success ".env 已写入且权限为 600"
