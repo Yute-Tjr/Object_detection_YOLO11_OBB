@@ -1,8 +1,7 @@
-import { CaretDown, CaretRight, Eye, Trash } from "@phosphor-icons/react";
-import { Fragment, useMemo, useState } from "react";
+import { Eye, Trash } from "@phosphor-icons/react";
+import { useMemo, useState } from "react";
 
 import type { ImageStage, TaskStatus, TaskSummary } from "../api/types";
-import { TaskDetails } from "./TaskDetails";
 import { belongsToFilter, TaskFilters, type TaskFilter } from "./TaskFilters";
 
 
@@ -53,7 +52,6 @@ export function TaskTable({
   initialFilter = "ongoing",
 }: TaskTableProps) {
   const [filter, setFilter] = useState<TaskFilter>(initialFilter);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const counts = useMemo(() => ({
     ongoing: tasks.filter((task) => belongsToFilter(task.status, "ongoing")).length,
     all: tasks.length,
@@ -69,12 +67,10 @@ export function TaskTable({
         <table className="task-table">
           <thead>
             <tr>
-              <th aria-label="展开" />
               <th>#</th>
               <th>任务ID</th>
               <th>图像数量</th>
               <th>完成进度</th>
-              <th>模型</th>
               <th>当前阶段</th>
               <th>状态</th>
               <th>创建时间</th>
@@ -83,23 +79,12 @@ export function TaskTable({
           </thead>
           <tbody>
             {visible.map((task, index) => {
-              const expanded = expandedId === task.id;
               const percent = task.totalImages
                 ? Math.round((task.completedImages / task.totalImages) * 100)
                 : 0;
               const tone = statusTone(task.status);
               return (
-                <Fragment key={task.id}>
-                  <tr className={expanded ? "task-row is-expanded" : "task-row"}>
-                    <td>
-                      <button
-                        className="icon-button"
-                        aria-label={`${expanded ? "收起" : "展开"}任务 ${task.displayId}`}
-                        onClick={() => setExpandedId(expanded ? null : task.id)}
-                      >
-                        {expanded ? <CaretDown size={17} /> : <CaretRight size={17} />}
-                      </button>
-                    </td>
+                  <tr className="task-row" key={task.id}>
                     <td>{index + 1}</td>
                     <td><span className="task-id-text">{task.displayId}</span></td>
                     <td>{task.totalImages}</td>
@@ -107,7 +92,6 @@ export function TaskTable({
                       <div className="table-progress-copy">{task.completedImages} / {task.totalImages}</div>
                       <div className="table-progress" aria-label={`完成 ${percent}%`}><span style={{ width: `${percent}%` }} /></div>
                     </td>
-                    <td>{task.detectorModel}</td>
                     <td>{stageText[task.currentStage]}</td>
                     <td>
                       <span className={`status-label status-label--${tone}`}>
@@ -150,12 +134,6 @@ export function TaskTable({
                       </div>
                     </td>
                   </tr>
-                  {expanded && (
-                    <tr className="task-details-row">
-                      <td colSpan={10}><TaskDetails task={task} /></td>
-                    </tr>
-                  )}
-                </Fragment>
               );
             })}
           </tbody>

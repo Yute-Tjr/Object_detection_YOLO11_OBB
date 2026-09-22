@@ -11,15 +11,12 @@ import { HistoryPage } from "./HistoryPage";
 const detail: TaskDetail = {
   id: "task-id",
   displayId: "T20260920-0100",
-  name: "端子_产线A_早班",
-  note: "历史复检",
   status: "partial_failed",
   currentStage: "complete",
   totalImages: 2,
   completedImages: 2,
   succeededImages: 1,
   failedImages: 1,
-  detectorModel: "YOLO11l-OBB",
   createdAt: "2026-09-20T08:00:00Z",
   images: [
     {
@@ -73,6 +70,33 @@ afterEach(() => {
 });
 
 describe("HistoryPage", () => {
+  it("shows history actions without metadata or model identity", async () => {
+    render(<HistoryPage client={client()} />);
+
+    expect(await screen.findByText("T20260920-0100")).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "模型" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /展开任务/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "预览 T20260920-0100" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除 T20260920-0100" })).toBeInTheDocument();
+  });
+
+  it("keeps server results when searching by original image filename", async () => {
+    const api = client();
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} />);
+    await screen.findByText("T20260920-0100");
+
+    await user.type(screen.getByLabelText("搜索历史任务"), "terminal-ok.png");
+    await user.click(screen.getByRole("button", { name: "搜索" }));
+
+    await waitFor(() => expect(api.listTasks).toHaveBeenLastCalledWith({
+      status: "all",
+      query: "terminal-ok.png",
+      limit: 100,
+    }));
+    expect(screen.getByText("T20260920-0100")).toBeInTheDocument();
+  });
+
   it("loads a historical task and opens its original/result comparison", async () => {
     const api = client();
     render(<HistoryPage client={api} />);
@@ -154,6 +178,8 @@ describe("HistoryPage", () => {
 
     const dialog = screen.getByRole("dialog", { name: "确认删除任务" });
     expect(within(dialog).getByText("T20260920-0100")).toBeInTheDocument();
+    expect(within(dialog).getByText("2 张")).toBeInTheDocument();
+    expect(within(dialog).queryByText("任务名称")).not.toBeInTheDocument();
     expect(within(dialog).getByText(/2 张原图、结果图和检测记录/)).toBeInTheDocument();
     expect(api.deleteTask).not.toHaveBeenCalled();
     await user.click(within(dialog).getByRole("button", { name: "确认删除" }));

@@ -1,5 +1,5 @@
 import { ArrowClockwise, MagnifyingGlass, WarningCircle } from "@phosphor-icons/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apiClient, type ApiClient } from "../api/client";
 import type { TaskDetail, TaskSummary } from "../api/types";
@@ -70,15 +70,6 @@ export function HistoryPage({
   }, [initialImageId, initialTaskId, openTask]);
 
   const selectedImage = selectedTask?.images[selectedIndex];
-  const colorModelAvailable = false;
-
-  const filteredTasks = useMemo(() => {
-    if (!query.trim()) return tasks;
-    const normalized = query.trim().toLowerCase();
-    return tasks.filter((task) =>
-      [task.displayId, task.name, task.note].some((value) => value?.toLowerCase().includes(normalized)),
-    );
-  }, [query, tasks]);
 
   const changeImage = (index: number) => {
     setSelectedIndex(index);
@@ -144,7 +135,7 @@ export function HistoryPage({
 
       <form className="history-search" onSubmit={(event) => { event.preventDefault(); void loadTasks(); }}>
         <MagnifyingGlass size={18} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务ID、任务名称或备注" aria-label="搜索历史任务" />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索任务 ID 或图片文件名" aria-label="搜索历史任务" />
         <button className="button button--secondary" type="submit">搜索</button>
       </form>
 
@@ -159,7 +150,7 @@ export function HistoryPage({
         <div className="history-loading">正在读取历史任务…</div>
       ) : (
         <TaskTable
-          tasks={filteredTasks}
+          tasks={tasks}
           onSelectTask={(task) => void openTask(task.id)}
           onDeleteTask={requestDeleteTask}
           deletingTaskId={deletingTaskId}
@@ -184,7 +175,6 @@ export function HistoryPage({
             images={selectedTask.images}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={changeImage}
-            colorModelAvailable={colorModelAvailable}
           />
         </section>
       )}

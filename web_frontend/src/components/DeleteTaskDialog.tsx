@@ -60,7 +60,6 @@ export function DeleteTaskDialog({
 
         <dl className="delete-dialog__summary">
           <div><dt>任务 ID</dt><dd>{task.displayId}</dd></div>
-          <div><dt>任务名称</dt><dd>{task.name || "未命名任务"}</dd></div>
           <div><dt>图像数量</dt><dd>{task.totalImages} 张</dd></div>
         </dl>
 

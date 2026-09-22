@@ -759,23 +759,12 @@
   white-space: nowrap;
 }
 
-.task-row.is-expanded td {
-  background: #f0f6ff;
-}
-
-.icon-button,
 .preview-button,
 .delete-button {
   border: 0;
   background: transparent;
   color: var(--color-primary);
   transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
-}
-
-.icon-button {
-  display: inline-grid;
-  padding: 5px;
-  place-items: center;
 }
 
 .task-id-text {
@@ -814,7 +803,6 @@
   font-weight: 600;
 }
 
-.icon-button:hover,
 .preview-button:hover {
   background: var(--color-primary-soft);
   color: var(--color-primary-hover);
@@ -944,7 +932,6 @@
   opacity: 0.65;
 }
 
-.icon-button:active,
 .preview-button:active,
 .delete-button:active:not(:disabled) {
   transform: translateY(1px);
@@ -983,33 +970,6 @@
 .status-label--success .status-dot { background: var(--color-success); }
 .status-label--failed { color: #c13f37; }
 .status-label--failed .status-dot { background: var(--color-danger); }
-
-.task-details-row td {
-  height: auto;
-  padding: 0;
-  background: #f7faff;
-}
-
-.task-details {
-  padding: 16px 28px 18px 44px;
-}
-
-.task-details dl {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 11px 42px;
-  margin: 0;
-}
-
-.task-details dl > div {
-  display: grid;
-  grid-template-columns: 74px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.task-details dt { color: var(--color-text-muted); }
-.task-details dd { margin: 0; color: #334155; }
-.mono-value { overflow: hidden; font-family: ui-monospace, monospace; text-overflow: ellipsis; }
 
 .table-empty {
   padding: 34px;
@@ -1136,7 +1096,4 @@
     overflow-x: auto;
   }
 
-  .task-details dl {
-    grid-template-columns: 1fr;
-  }
 }
