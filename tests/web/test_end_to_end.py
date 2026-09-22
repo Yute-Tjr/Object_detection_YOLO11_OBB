@@ -16,7 +16,7 @@ from terminal_web.database import Base
 from terminal_web.domain import ImageStage, OverallResult
 from terminal_web.inference.types import ImagePrediction, RegionPrediction
 from terminal_web.readiness import ReadinessStore
-from terminal_web.schemas import HealthResponse, ModelHealth
+from terminal_web.schemas import HealthResponse
 from terminal_web.storage import ArtifactStorage
 from terminal_web.worker import InspectionWorker
 
@@ -34,14 +34,6 @@ class ReadyForUploads:
             database_ready=True,
             worker_ready=True,
             models_ready=True,
-            models=[
-                ModelHealth(
-                    model_type="detector",
-                    name="YOLO11l-OBB",
-                    version="baseline",
-                    ready=True,
-                )
-            ],
         )
 
 
@@ -115,7 +107,6 @@ class EndToEndWorkflowTest(unittest.TestCase):
                 ("files", ("ok.png", png_bytes((20, 120, 20)), "image/png")),
                 ("files", ("failed.png", png_bytes((120, 20, 20)), "image/png")),
             ],
-            data={"operator": "测试员", "name": "端到端测试"},
         )
         self.assertEqual(response.status_code, 202, response.text)
         task_id = response.json()["id"]

@@ -36,7 +36,6 @@ class HealthResponse(ApiModel):
     database_ready: bool
     worker_ready: bool
     models_ready: bool
-    models: list[ModelHealth]
 
 
 class ClassificationResponse(ApiModel):
@@ -44,8 +43,6 @@ class ClassificationResponse(ApiModel):
     predicted_label: str
     confidence: float
     probabilities: dict[str, float] | None = None
-    model_name: str | None = None
-    model_version: str | None = None
 
 
 class DetectionResponse(ApiModel):
@@ -82,16 +79,12 @@ class ImageDetail(ImageSummary):
 class TaskSummary(ApiModel):
     id: uuid.UUID
     display_id: str
-    name: str | None = None
-    operator: str | None = None
-    note: str | None = None
     status: TaskStatus
     current_stage: ImageStage
     total_images: int
     completed_images: int
     succeeded_images: int
     failed_images: int
-    detector_model: str
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None

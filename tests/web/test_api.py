@@ -14,8 +14,14 @@ from sqlalchemy.pool import QueuePool, StaticPool
 from terminal_web.api.app import create_app
 from terminal_web.database import Base
 from terminal_web.domain import ImageStage, ImageStatus, OverallResult, TaskStatus
-from terminal_web.models import InspectionImage, InspectionTask
-from terminal_web.schemas import HealthResponse, ModelHealth
+from terminal_web.models import (
+    ClassificationResult,
+    Detection,
+    InspectionImage,
+    InspectionTask,
+    ModelRecord,
+)
+from terminal_web.schemas import HealthResponse
 from terminal_web.storage import ArtifactStorage
 
 
@@ -38,14 +44,6 @@ class FakeReadiness:
             database_ready=self.database_ready,
             worker_ready=self.worker_ready,
             models_ready=self.models_ready,
-            models=[
-                ModelHealth(
-                    model_type="detector",
-                    name="YOLO11l-OBB",
-                    version="baseline",
-                    ready=self.models_ready,
-                )
-            ],
         )
 
 
@@ -91,22 +89,16 @@ class ApiTest(unittest.TestCase):
         response = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(1),
-            data={"operator": "张三"},
         )
         self.assertEqual(response.status_code, 202, response.text)
-        self.assertEqual(response.json()["totalImages"], 1)
-        self.assertEqual(response.json()["operator"], "张三")
+        payload = response.json()
+        self.assertEqual(payload["totalImages"], 1)
+        self.assertTrue(
+            {"operator", "name", "note", "detectorModel"}.isdisjoint(payload)
+        )
         self.assertEqual(self.count_tasks(), 1)
 
-    def test_create_task_requires_non_blank_operator(self):
-        for data in ({}, {"operator": "   "}):
-            response = self.client.post(
-                "/api/v1/tasks", files=self.valid_files(1), data=data
-            )
-            self.assertEqual(response.status_code, 422, response.text)
-        self.assertEqual(self.count_tasks(), 0)
-
-    def test_create_task_persists_operator_name_and_note(self):
+    def test_create_task_ignores_legacy_metadata_form_fields(self):
         response = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(1),
@@ -114,27 +106,12 @@ class ApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 202, response.text)
         payload = response.json()
-        self.assertEqual(payload["operator"], "张三")
-        self.assertEqual(payload["name"], "早班")
-        self.assertEqual(payload["note"], "首件")
-
-    def test_legacy_task_without_operator_is_readable(self):
-        with self.session_factory() as session:
-            task = InspectionTask(display_id="T-legacy", operator=None)
-            session.add(task)
-            session.commit()
-            task_id = task.id
-
-        response = self.client.get(f"/api/v1/tasks/{task_id}")
-
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertIsNone(response.json()["operator"])
+        self.assertTrue({"operator", "name", "note"}.isdisjoint(payload))
 
     def test_create_task_rejects_101_images_without_writing_files(self):
         response = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(101),
-            data={"operator": "张三"},
         )
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.count_tasks(), 0)
@@ -145,7 +122,6 @@ class ApiTest(unittest.TestCase):
         response = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(1),
-            data={"operator": "张三"},
         )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(self.count_tasks(), 0)
@@ -154,9 +130,7 @@ class ApiTest(unittest.TestCase):
         files = self.valid_files(1) + [
             ("files", ("bad.png", b"broken", "image/png"))
         ]
-        response = self.client.post(
-            "/api/v1/tasks", files=files, data={"operator": "张三"}
-        )
+        response = self.client.post("/api/v1/tasks", files=files)
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.count_tasks(), 0)
         self.assertEqual(list(self.storage_root.iterdir()), [])
@@ -182,11 +156,79 @@ class ApiTest(unittest.TestCase):
         statuses = {item["status"] for item in response.json()["items"]}
         self.assertEqual(statuses, {"failed", "partial_failed"})
 
+    def test_task_search_accepts_original_image_filename(self):
+        created = self.client.post(
+            "/api/v1/tasks",
+            files=[("files", ("unique-terminal-name.png", png_bytes(), "image/png"))],
+        )
+        self.assertEqual(created.status_code, 202, created.text)
+
+        response = self.client.get("/api/v1/tasks?query=unique-terminal-name")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["total"], 1)
+        self.assertEqual(response.json()["items"][0]["id"], created.json()["id"])
+
+    def test_health_response_does_not_expose_model_identity(self):
+        response = self.client.get("/api/v1/health")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            set(response.json()),
+            {"apiReady", "databaseReady", "workerReady", "modelsReady"},
+        )
+
+    def test_image_detail_does_not_expose_classifier_identity(self):
+        image_id = uuid.uuid4()
+        with self.session_factory() as session:
+            model = ModelRecord(
+                model_type="anomaly",
+                name="private-classifier-name",
+                version="private-version",
+                weights_path="private.pt",
+                sha256="a" * 64,
+                load_config={},
+            )
+            task = InspectionTask(display_id="T-classification", total_images=1)
+            image = InspectionImage(
+                id=image_id,
+                sequence_no=0,
+                original_filename="terminal.png",
+                stored_filename="terminal.png",
+                original_path="tasks/terminal.png",
+                width=20,
+                height=30,
+                size_bytes=100,
+            )
+            detection = Detection(
+                region_label="label3",
+                confidence=0.99,
+                points=[[1, 1], [10, 1], [10, 10], [1, 10]],
+                selected_for_classification=True,
+            )
+            detection.classifications.append(
+                ClassificationResult(
+                    classifier_type="anomaly",
+                    predicted_label="OK",
+                    confidence=0.98,
+                    model=model,
+                )
+            )
+            image.detections.append(detection)
+            task.images.append(image)
+            session.add(task)
+            session.commit()
+
+        response = self.client.get(f"/api/v1/images/{image_id}")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        anomaly = response.json()["detections"][0]["anomaly"]
+        self.assertTrue({"modelName", "modelVersion"}.isdisjoint(anomaly))
+
     def test_delete_completed_task_removes_database_record_and_artifacts(self):
         created = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(1),
-            data={"operator": "张三"},
         )
         self.assertEqual(created.status_code, 202, created.text)
         task_id = created.json()["id"]
@@ -207,7 +249,6 @@ class ApiTest(unittest.TestCase):
         created = self.client.post(
             "/api/v1/tasks",
             files=self.valid_files(1),
-            data={"operator": "张三"},
         )
         self.assertEqual(created.status_code, 202, created.text)
         task_id = created.json()["id"]

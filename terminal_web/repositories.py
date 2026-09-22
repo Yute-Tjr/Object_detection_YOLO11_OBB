@@ -27,17 +27,10 @@ class TaskRepository:
         task_id: uuid.UUID,
         display_id: str,
         images: Sequence[InspectionImage],
-        *,
-        operator: str,
-        name: str | None = None,
-        note: str | None = None,
     ) -> InspectionTask:
         task = InspectionTask(
             id=task_id,
             display_id=display_id,
-            operator=operator,
-            name=name,
-            note=note,
             status=TaskStatus.queued,
             current_stage=ImageStage.pending,
             total_images=len(images),
@@ -51,10 +44,7 @@ class TaskRepository:
         statement = (
             select(InspectionTask)
             .where(InspectionTask.id == task_id)
-            .options(
-                selectinload(InspectionTask.detector_model),
-                selectinload(InspectionTask.images),
-            )
+            .options(selectinload(InspectionTask.images))
         )
         return self.session.scalar(statement)
 
@@ -86,7 +76,6 @@ class TaskRepository:
             filters.append(
                 or_(
                     InspectionTask.display_id.ilike(pattern),
-                    InspectionTask.name.ilike(pattern),
                     image_match,
                 )
             )
@@ -97,7 +86,6 @@ class TaskRepository:
         statement = (
             select(InspectionTask)
             .where(*filters)
-            .options(selectinload(InspectionTask.detector_model))
             .order_by(InspectionTask.created_at.desc(), InspectionTask.id.desc())
             .offset(offset)
             .limit(limit)

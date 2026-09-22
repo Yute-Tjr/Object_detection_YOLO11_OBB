@@ -154,7 +154,6 @@ class ReadinessStore:
 
     def snapshot(self) -> HealthResponse:
         state = self._read()
-        models = [ModelHealth.model_validate(item) for item in state.get("models", [])]
         models_ready = bool(state.get("models_ready", False))
         heartbeat_text = state.get("heartbeat_at")
         worker_ready = False
@@ -168,22 +167,11 @@ class ReadinessStore:
                 )
             except (TypeError, ValueError):
                 worker_ready = False
-        if not models and state.get("error"):
-            models = [
-                ModelHealth(
-                    model_type="pipeline",
-                    name="terminal-inspection",
-                    version="configured",
-                    ready=False,
-                    error=str(state["error"]),
-                )
-            ]
         return HealthResponse(
             api_ready=True,
             database_ready=True,
             worker_ready=worker_ready,
             models_ready=models_ready,
-            models=models,
         )
 
     def _read(self) -> dict:

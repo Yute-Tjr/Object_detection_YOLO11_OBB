@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 
 from terminal_web.api.dependencies import ReadinessProvider, get_readiness
-from terminal_web.schemas import HealthResponse, ModelHealth
+from terminal_web.schemas import HealthResponse
 
 
 router = APIRouter(tags=["health"])
@@ -23,23 +23,12 @@ class FileReadinessProvider:
         ]
 
     def snapshot(self) -> HealthResponse:
-        models = [
-            ModelHealth(
-                model_type=model_type,
-                name=name,
-                version=version,
-                ready=path.is_file(),
-                error=None if path.is_file() else "weight file not found",
-            )
-            for model_type, name, version, path in self._models
-        ]
-        models_ready = all(model.ready for model in models)
+        models_ready = all(path.is_file() for _, _, _, path in self._models)
         return HealthResponse(
             api_ready=True,
             database_ready=True,
             worker_ready=True,
             models_ready=models_ready,
-            models=models,
         )
 
 

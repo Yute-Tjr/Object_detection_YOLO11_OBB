@@ -54,8 +54,6 @@ class InspectionTask(TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     display_id: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
-    name: Mapped[str | None] = mapped_column(String(255))
-    operator: Mapped[str | None] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(
         String(32), default=TaskStatus.queued.value, nullable=False
     )
@@ -74,7 +72,6 @@ class InspectionTask(TimestampMixin, Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    note: Mapped[str | None] = mapped_column(Text)
 
     detector_model: Mapped[ModelRecord | None] = relationship()
     images: Mapped[list[InspectionImage]] = relationship(

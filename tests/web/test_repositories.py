@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from inspect import signature
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -58,19 +59,18 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(task.failed_images, 1)
         self.assertEqual(task.status, TaskStatus.partial_failed)
 
-    def test_create_task_persists_operator(self):
-        task = self.repo.create_task(
-            uuid.uuid4(),
-            "T-create",
-            [],
-            operator="张三",
-            name="早班",
-            note="首件",
+    def test_create_task_persists_required_task_fields(self):
+        self.assertEqual(
+            tuple(signature(self.repo.create_task).parameters),
+            ("task_id", "display_id", "images"),
         )
+        task = self.repo.create_task(uuid.uuid4(), "T-create", [])
 
-        self.assertEqual(task.operator, "张三")
-        self.assertEqual(task.name, "早班")
-        self.assertEqual(task.note, "首件")
+        self.assertEqual(task.display_id, "T-create")
+        self.assertEqual(task.total_images, 0)
+        self.assertNotIn("operator", InspectionTask.__table__.columns)
+        self.assertNotIn("name", InspectionTask.__table__.columns)
+        self.assertNotIn("note", InspectionTask.__table__.columns)
 
     def test_failed_filter_includes_failed_and_partial_failed(self):
         for status in (TaskStatus.failed, TaskStatus.partial_failed, TaskStatus.succeeded):

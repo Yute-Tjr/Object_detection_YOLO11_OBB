@@ -28,20 +28,15 @@ def image_summary(image: InspectionImage) -> ImageSummary:
 
 
 def task_summary(task: InspectionTask) -> TaskSummary:
-    detector_name = task.detector_model.name if task.detector_model else "YOLO11l-OBB"
     return TaskSummary(
         id=task.id,
         display_id=task.display_id,
-        name=task.name,
-        operator=task.operator,
-        note=task.note,
         status=task.status,
         current_stage=task.current_stage,
         total_images=task.total_images,
         completed_images=task.completed_images,
         succeeded_images=task.succeeded_images,
         failed_images=task.failed_images,
-        detector_model=detector_name,
         created_at=task.created_at,
         started_at=task.started_at,
         finished_at=task.finished_at,
@@ -63,8 +58,6 @@ def detection_response(detection: Detection) -> DetectionResponse:
             predicted_label=result.predicted_label,
             confidence=result.confidence,
             probabilities=result.probabilities,
-            model_name=result.model.name if result.model else None,
-            model_version=result.model.version if result.model else None,
         )
         for result in detection.classifications
     }
