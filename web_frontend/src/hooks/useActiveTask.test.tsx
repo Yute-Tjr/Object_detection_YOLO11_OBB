@@ -11,14 +11,12 @@ import { pollingDelay, useActiveTask } from "./useActiveTask";
 const runningTask: TaskDetail = {
   id: "task-1",
   displayId: "T20260920-0001",
-  operator: "张三",
   status: "running",
   currentStage: "object_detection",
   totalImages: 1,
   completedImages: 0,
   succeededImages: 0,
   failedImages: 0,
-  detectorModel: "YOLO11l-OBB",
   createdAt: "2026-09-20T08:00:00Z",
   images: [],
 };

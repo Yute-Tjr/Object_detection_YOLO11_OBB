@@ -7,7 +7,6 @@ interface ImageComparisonProps {
   images: ImageSummary[];
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
-  colorModelAvailable: boolean;
 }
 
 
@@ -23,7 +22,6 @@ export function ImageComparison({
   images,
   selectedIndex,
   onSelectedIndexChange,
-  colorModelAvailable,
 }: ImageComparisonProps) {
   const image = images[selectedIndex];
   if (!image) return null;
@@ -35,7 +33,7 @@ export function ImageComparison({
           <span className={`result-badge result-badge--${image.overallResult.toLowerCase()}`}>
             {image.overallResult === "UNKNOWN" ? "分析中" : image.overallResult}
           </span>
-          {!colorModelAvailable && <span className="reserved-copy">颜色分类：接口预留</span>}
+          <span className="reserved-copy">颜色分类：接口预留</span>
         </div>
         <div className="image-pagination">
           <span>{selectedIndex + 1} / {images.length}</span>

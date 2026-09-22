@@ -13,26 +13,17 @@ const health: HealthResponse = {
   databaseReady: true,
   workerReady: true,
   modelsReady: true,
-  models: [
-    { modelType: "detector", name: "YOLO11l-OBB", version: "baseline", ready: true },
-    { modelType: "anomaly", name: "ResNet18-label3", version: "best", ready: true },
-    { modelType: "anomaly", name: "ResNet18-label5", version: "best", ready: true },
-  ],
 };
 
 const runningTask: TaskDetail = {
   id: "task-1",
   displayId: "T20260920-0001",
-  name: "端子_产线A_早班",
-  operator: "张三",
-  note: "",
   status: "running",
   currentStage: "object_detection",
   totalImages: 1,
   completedImages: 0,
   succeededImages: 0,
   failedImages: 0,
-  detectorModel: "YOLO11l-OBB",
   createdAt: "2026-09-20T08:00:00Z",
   images: [
     {
@@ -81,7 +72,7 @@ afterEach(() => {
 describe("TasksPage", () => {
   it("disables start when 101 files are selected", async () => {
     render(<TasksPage client={fakeClient()} />);
-    await screen.findByText("YOLO11l-OBB");
+    await screen.findByText("系统已就绪");
 
     fireEvent.change(screen.getByLabelText("选择图片"), {
       target: { files: files(101) },
@@ -94,7 +85,7 @@ describe("TasksPage", () => {
   it("removing and clearing files updates the selected count", async () => {
     const user = userEvent.setup();
     render(<TasksPage client={fakeClient()} />);
-    await screen.findByText("YOLO11l-OBB");
+    await screen.findByText("系统已就绪");
     fireEvent.change(screen.getByLabelText("选择图片"), {
       target: { files: files(2) },
     });
@@ -106,33 +97,38 @@ describe("TasksPage", () => {
     expect(screen.getByText(/已选择 0 张图片/)).toBeInTheDocument();
   });
 
-  it("explains which model is unavailable and disables start", async () => {
+  it("uses a generic unavailable message and disables start", async () => {
     const unavailable = {
       ...health,
       modelsReady: false,
-      models: health.models.map((model) =>
-        model.name === "ResNet18-label5" ? { ...model, ready: false } : model,
-      ),
     };
     render(<TasksPage client={fakeClient({ getHealth: vi.fn().mockResolvedValue(unavailable) })} />);
-    await screen.findByText(/ResNet18-label5 尚未就绪/);
+    await screen.findByText("系统未就绪");
     fireEvent.change(screen.getByLabelText("选择图片"), {
       target: { files: files(1) },
     });
+    expect(screen.queryByText(/ResNet|YOLO/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "开始检测" })).toBeDisabled();
   });
 
-  it("starts a valid batch and renders task progress and comparison controls", async () => {
+  it("creates from images without metadata, model identity, or a history table", async () => {
+    const api = fakeClient();
     const user = userEvent.setup();
-    render(<TasksPage client={fakeClient()} />);
-    await screen.findByText("YOLO11l-OBB");
+    render(<TasksPage client={api} />);
+    await screen.findByText("系统已就绪");
+    expect(screen.queryByLabelText("操作员")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("任务名称")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("备注")).not.toBeInTheDocument();
+    expect(screen.queryByText(/YOLO|ResNet/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "检测任务列表" })).not.toBeInTheDocument();
+    expect(api.listTasks).not.toHaveBeenCalled();
+
     fireEvent.change(screen.getByLabelText("选择图片"), {
       target: { files: files(1) },
     });
-    await user.type(screen.getByLabelText("操作员"), "张三");
-
     await user.click(screen.getByRole("button", { name: "开始检测" }));
 
+    expect(api.createTask).toHaveBeenCalledWith(expect.any(Array));
     expect((await screen.findAllByText("T20260920-0001")).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("正在检测 0 / 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "上一张图片" })).toBeInTheDocument();
@@ -141,35 +137,6 @@ describe("TasksPage", () => {
     expect(screen.getByAltText("检测前原图")).toHaveAttribute("height", "3072");
     expect(screen.getByAltText("检测后结果")).not.toHaveAttribute("width");
     expect(screen.getByAltText("检测后结果")).not.toHaveAttribute("height");
-  });
-
-  it("requires operator and clears metadata only after creation succeeds", async () => {
-    const api = fakeClient();
-    const user = userEvent.setup();
-    const { unmount } = render(<TasksPage client={api} />);
-    await screen.findByText("YOLO11l-OBB");
-    fireEvent.change(screen.getByLabelText("选择图片"), {
-      target: { files: files(1) },
-    });
-    expect(screen.getByRole("button", { name: "开始检测" })).toBeDisabled();
-
-    await user.type(screen.getByLabelText("操作员"), "张三");
-    await user.type(screen.getByLabelText("任务名称"), "早班");
-    await user.type(screen.getByLabelText("备注"), "首件");
-    await user.click(screen.getByRole("button", { name: "开始检测" }));
-
-    expect(api.createTask).toHaveBeenCalledWith(expect.any(Array), {
-      operator: "张三",
-      name: "早班",
-      note: "首件",
-    });
-    expect(screen.getByLabelText("操作员")).toHaveValue("");
-    expect(screen.getByLabelText("任务名称")).toHaveValue("");
-    expect(screen.getByLabelText("备注")).toHaveValue("");
-
-    unmount();
-    render(<TasksPage client={fakeClient()} />);
-    expect(screen.getByLabelText("操作员")).toHaveValue("");
   });
 
   it.each(["succeeded", "partial_failed", "failed"] as const)(

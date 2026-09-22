@@ -41,7 +41,6 @@ export function ProgressPanel({ task }: ProgressPanelProps) {
             </strong>
             <span className="task-reference">任务 <span>{task.displayId}</span></span>
           </div>
-          <div className="model-reference">模型：<strong>{task.detectorModel}</strong></div>
         </div>
         <div className="progress-track" aria-label={`完成进度 ${percent}%`}>
           <span style={{ width: `${percent}%` }} />

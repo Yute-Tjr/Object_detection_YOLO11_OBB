@@ -165,73 +165,6 @@
   background: var(--color-primary-soft);
 }
 
-.task-metadata-form {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(240px, 1fr) minmax(280px, 1.3fr);
-  gap: 14px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid #edf1f6;
-}
-
-.task-metadata-form label {
-  display: grid;
-  gap: 7px;
-  min-width: 0;
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.task-metadata-form label > span {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-}
-
-.task-metadata-form em {
-  color: var(--color-danger);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 500;
-}
-
-.task-metadata-form input,
-.task-metadata-form textarea {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--color-text);
-  font: inherit;
-  font-weight: 400;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
-.task-metadata-form input {
-  height: 40px;
-  padding: 0 11px;
-}
-
-.task-metadata-form textarea {
-  min-height: 40px;
-  padding: 9px 11px;
-  resize: vertical;
-}
-
-.task-metadata-form input:hover,
-.task-metadata-form textarea:hover {
-  border-color: #9bbce8;
-}
-
-.task-metadata-form input:focus,
-.task-metadata-form textarea:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgb(22 119 255 / 12%);
-  outline: 0;
-}
-
 .upload-panel__prompt,
 .upload-panel__actions {
   display: flex;
@@ -437,15 +370,9 @@
   font-size: 22px;
 }
 
-.task-reference,
-.model-reference {
+.task-reference {
   color: var(--color-text-secondary);
   font-size: 13px;
-}
-
-.model-reference strong {
-  font-size: 14px;
-  font-weight: 600;
 }
 
 .progress-track {
@@ -1156,13 +1083,6 @@
     border-left: 0;
   }
 
-  .task-metadata-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .task-metadata-form__note {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 760px) {
@@ -1200,14 +1120,6 @@
   .upload-panel__actions {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .task-metadata-form {
-    grid-template-columns: 1fr;
-  }
-
-  .task-metadata-form__note {
-    grid-column: auto;
   }
 
   .upload-panel__actions {

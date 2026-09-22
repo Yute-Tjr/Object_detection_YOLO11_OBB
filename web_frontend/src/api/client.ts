@@ -1,5 +1,4 @@
 import type {
-  CreateTaskMetadata,
   HealthResponse,
   ImageDetail,
   ImagePage,
@@ -45,16 +44,9 @@ export const apiClient = {
     return request("/health", { signal });
   },
 
-  createTask(
-    files: File[],
-    metadata: CreateTaskMetadata,
-    signal?: AbortSignal,
-  ): Promise<TaskDetail> {
+  createTask(files: File[], signal?: AbortSignal): Promise<TaskDetail> {
     const body = new FormData();
     files.forEach((file) => body.append("files", file));
-    body.append("operator", metadata.operator.trim());
-    if (metadata.name?.trim()) body.append("name", metadata.name.trim());
-    if (metadata.note?.trim()) body.append("note", metadata.note.trim());
     return request("/tasks", { method: "POST", body, signal });
   },
 
