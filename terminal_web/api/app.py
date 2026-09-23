@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 
-from terminal_web.api import auth, health, images, tasks
+from terminal_web.api import auth, feedback, health, images, tasks
 from terminal_web.config import get_settings
 from terminal_web.database import build_session_factory
 from terminal_web.readiness import ReadinessStore
@@ -106,4 +106,5 @@ def create_app(
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(tasks.router, prefix="/api/v1")
     app.include_router(images.router, prefix="/api/v1")
+    app.include_router(feedback.router, prefix="/api/v1")
     return app

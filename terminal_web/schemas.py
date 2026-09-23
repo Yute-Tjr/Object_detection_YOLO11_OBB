@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -84,6 +84,57 @@ class ImageSummary(ApiModel):
 
 class ImageDetail(ImageSummary):
     detections: list[DetectionResponse]
+
+
+FeedbackVerdict = Literal["OK", "NG"]
+FeedbackColor = Literal["B", "G", "R", "W"]
+LogicalRegion = Literal[
+    "label1", "label2", "label3", "label4", "label5", "label6"
+]
+
+
+class FeedbackDetectionResponse(ApiModel):
+    detection_id: uuid.UUID
+    region_label: str
+    logical_region: str
+    anomaly: ClassificationResponse | None = None
+    color: ClassificationResponse | None = None
+
+
+class FeedbackItemInput(ApiModel):
+    detection_id: uuid.UUID
+    verdict: FeedbackVerdict
+    color: FeedbackColor | None = None
+
+
+class FeedbackUpdateRequest(ApiModel):
+    items: list[FeedbackItemInput]
+    missed_regions: list[LogicalRegion]
+
+
+class FeedbackItemResponse(ApiModel):
+    detection_id: uuid.UUID
+    region_label: str
+    logical_region: str
+    verdict: FeedbackVerdict
+    color: FeedbackColor | None = None
+
+
+class FeedbackRecordResponse(ApiModel):
+    id: uuid.UUID
+    items: list[FeedbackItemResponse]
+    missed_regions: list[LogicalRegion]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImageFeedbackView(ApiModel):
+    image_id: uuid.UUID
+    original_filename: str
+    status: ImageStatus
+    detections: list[FeedbackDetectionResponse]
+    missed_region_candidates: list[LogicalRegion]
+    feedback: FeedbackRecordResponse | None = None
 
 
 class TaskSummary(ApiModel):
