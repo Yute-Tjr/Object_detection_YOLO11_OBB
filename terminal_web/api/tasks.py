@@ -123,7 +123,7 @@ async def create_task(
         task = repository.create_task(task_id, display_id, images)
         repository.session.commit()
         committed = True
-        return task_detail(task)
+        return task_detail(task, has_feedback=False)
     except InvalidImageError as exc:
         repository.session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -147,8 +147,12 @@ def list_tasks(
     tasks, total = repository.list_tasks(
         _statuses_for_filter(status_filter), query, offset, limit
     )
+    feedback_task_ids = repository.feedback_task_ids([task.id for task in tasks])
     return TaskPage(
-        items=[task_summary(task) for task in tasks],
+        items=[
+            task_summary(task, has_feedback=task.id in feedback_task_ids)
+            for task in tasks
+        ],
         total=total,
         offset=offset,
         limit=limit,
@@ -166,6 +170,8 @@ def delete_task(
         raise HTTPException(status_code=404, detail="task not found")
     if task.status in {TaskStatus.queued.value, TaskStatus.running.value}:
         raise HTTPException(status_code=409, detail="active task cannot be deleted")
+    if repository.task_has_feedback(task.id):
+        raise HTTPException(status_code=409, detail="任务包含人工反馈，不能删除")
 
     quarantined = storage.quarantine_task(task_id)
     try:
@@ -188,7 +194,7 @@ def get_task(
     task = repository.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="task not found")
-    return task_detail(task)
+    return task_detail(task, has_feedback=repository.task_has_feedback(task.id))
 
 
 @router.get("/{task_id}/images", response_model=ImagePage)

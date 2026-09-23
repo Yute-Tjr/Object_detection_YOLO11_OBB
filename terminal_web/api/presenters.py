@@ -27,7 +27,7 @@ def image_summary(image: InspectionImage) -> ImageSummary:
     )
 
 
-def task_summary(task: InspectionTask) -> TaskSummary:
+def task_summary(task: InspectionTask, *, has_feedback: bool) -> TaskSummary:
     return TaskSummary(
         id=task.id,
         display_id=task.display_id,
@@ -37,14 +37,15 @@ def task_summary(task: InspectionTask) -> TaskSummary:
         completed_images=task.completed_images,
         succeeded_images=task.succeeded_images,
         failed_images=task.failed_images,
+        has_feedback=has_feedback,
         created_at=task.created_at,
         started_at=task.started_at,
         finished_at=task.finished_at,
     )
 
 
-def task_detail(task: InspectionTask) -> TaskDetail:
-    summary = task_summary(task)
+def task_detail(task: InspectionTask, *, has_feedback: bool) -> TaskDetail:
+    summary = task_summary(task, has_feedback=has_feedback)
     return TaskDetail(
         **summary.model_dump(),
         images=[image_summary(image) for image in task.images],

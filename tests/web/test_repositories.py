@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from terminal_web.database import Base
 from terminal_web.domain import ImageStage, ImageStatus, OverallResult, TaskStatus
-from terminal_web.models import InspectionImage, InspectionTask
+from terminal_web.auth import hash_password
+from terminal_web.models import ImageFeedback, InspectionImage, InspectionTask, User
 from terminal_web.repositories import TaskRepository
 
 
@@ -89,4 +90,28 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(
             {task.status for task in tasks},
             {TaskStatus.failed, TaskStatus.partial_failed},
+        )
+
+    def test_feedback_queries_identify_only_tasks_with_feedback(self):
+        with_feedback = self.make_task_with_images([ImageStatus.succeeded])
+        without_feedback = self.make_task_with_images([ImageStatus.succeeded])
+        user = User(
+            username="reviewer",
+            password_hash=hash_password("Password-reviewer-2026"),
+        )
+        self.session.add(user)
+        self.session.flush()
+        self.session.add(
+            ImageFeedback(
+                user_id=user.id,
+                image_id=with_feedback.images[0].id,
+            )
+        )
+        self.session.commit()
+
+        self.assertTrue(self.repo.task_has_feedback(with_feedback.id))
+        self.assertFalse(self.repo.task_has_feedback(without_feedback.id))
+        self.assertEqual(
+            self.repo.feedback_task_ids([with_feedback.id, without_feedback.id]),
+            {with_feedback.id},
         )

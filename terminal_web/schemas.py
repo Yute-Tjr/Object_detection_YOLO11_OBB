@@ -146,6 +146,7 @@ class TaskSummary(ApiModel):
     completed_images: int
     succeeded_images: int
     failed_images: int
+    has_feedback: bool
     created_at: datetime
     started_at: datetime | None = None
     finished_at: datetime | None = None

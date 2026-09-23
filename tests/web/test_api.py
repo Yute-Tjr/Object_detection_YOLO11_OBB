@@ -17,9 +17,11 @@ from terminal_web.domain import ImageStage, ImageStatus, OverallResult, TaskStat
 from terminal_web.models import (
     ClassificationResult,
     Detection,
+    ImageFeedback,
     InspectionImage,
     InspectionTask,
     ModelRecord,
+    User,
 )
 from terminal_web.schemas import HealthResponse
 from terminal_web.storage import ArtifactStorage
@@ -99,6 +101,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 202, response.text)
         payload = response.json()
         self.assertEqual(payload["totalImages"], 1)
+        self.assertFalse(payload["hasFeedback"])
         self.assertTrue(
             {"operator", "name", "note", "detectorModel"}.isdisjoint(payload)
         )
@@ -263,6 +266,37 @@ class ApiTest(unittest.TestCase):
         response = self.client.delete(f"/api/v1/tasks/{task_id}")
 
         self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(self.count_tasks(), 1)
+        self.assertTrue(task_dir.exists())
+
+    def test_task_with_feedback_is_marked_and_cannot_be_deleted(self):
+        created = self.client.post(
+            "/api/v1/tasks",
+            files=self.valid_files(1),
+        )
+        self.assertEqual(created.status_code, 202, created.text)
+        task_id = created.json()["id"]
+        task_dir = self.storage_root / "tasks" / task_id
+        with self.session_factory() as session:
+            task = session.get(InspectionTask, uuid.UUID(task_id))
+            task.status = TaskStatus.succeeded
+            task.current_stage = ImageStage.complete
+            user = session.scalar(select(User).where(User.username == "tester"))
+            session.add(
+                ImageFeedback(user_id=user.id, image_id=task.images[0].id)
+            )
+            session.commit()
+
+        page = self.client.get("/api/v1/tasks?status=all")
+        detail = self.client.get(f"/api/v1/tasks/{task_id}")
+        deleted = self.client.delete(f"/api/v1/tasks/{task_id}")
+
+        self.assertEqual(page.status_code, 200, page.text)
+        listed = next(item for item in page.json()["items"] if item["id"] == task_id)
+        self.assertTrue(listed["hasFeedback"])
+        self.assertTrue(detail.json()["hasFeedback"])
+        self.assertEqual(deleted.status_code, 409)
+        self.assertEqual(deleted.json()["detail"], "任务包含人工反馈，不能删除")
         self.assertEqual(self.count_tasks(), 1)
         self.assertTrue(task_dir.exists())
 

@@ -15,7 +15,7 @@ from terminal_web.domain import (
     TaskStatus,
     aggregate_task_status,
 )
-from terminal_web.models import Detection, InspectionImage, InspectionTask
+from terminal_web.models import Detection, ImageFeedback, InspectionImage, InspectionTask
 
 
 class TaskRepository:
@@ -51,6 +51,29 @@ class TaskRepository:
     def delete_task(self, task: InspectionTask) -> None:
         self.session.delete(task)
         self.session.flush()
+
+    def task_has_feedback(self, task_id: uuid.UUID) -> bool:
+        statement = select(
+            select(ImageFeedback.id)
+            .join(InspectionImage, ImageFeedback.image_id == InspectionImage.id)
+            .where(InspectionImage.task_id == task_id)
+            .exists()
+        )
+        return bool(self.session.scalar(statement))
+
+    def feedback_task_ids(
+        self,
+        task_ids: Sequence[uuid.UUID],
+    ) -> set[uuid.UUID]:
+        if not task_ids:
+            return set()
+        statement = (
+            select(InspectionImage.task_id)
+            .join(ImageFeedback, ImageFeedback.image_id == InspectionImage.id)
+            .where(InspectionImage.task_id.in_(task_ids))
+            .distinct()
+        )
+        return set(self.session.scalars(statement))
 
     def list_tasks(
         self,
