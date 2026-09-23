@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiClient } from "./client";
+import { ApiError, apiClient, subscribeUnauthorized } from "./client";
 
 
 afterEach(() => {
@@ -80,6 +80,53 @@ describe("apiClient", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/tasks/task%2F1",
       expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+
+  it("sends same-origin credentials and notifies once on 401", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "authentication required" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const listener = vi.fn();
+    const unsubscribe = subscribeUnauthorized(listener);
+
+    await expect(apiClient.getTask("task-1")).rejects.toEqual(
+      expect.objectContaining<ApiError>({
+        message: "authentication required",
+        status: 401,
+      }),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/tasks/task-1",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("preserves username case when logging in", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "user-1", username: "Admin" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiClient.login("Admin", "Password-2026");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/auth/login",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "same-origin",
+        body: JSON.stringify({ username: "Admin", password: "Password-2026" }),
+      }),
     );
   });
 });

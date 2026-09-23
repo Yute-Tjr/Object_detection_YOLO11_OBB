@@ -1,15 +1,17 @@
-import { ClockCounterClockwise, Scan } from "@phosphor-icons/react";
+import { ClockCounterClockwise, Scan, SignOut, UserCircle } from "@phosphor-icons/react";
 
 
 export type AppPage = "tasks" | "history";
 
 interface SidebarProps {
   active: AppPage;
+  username: string;
   onNavigate: (page: AppPage) => void;
+  onLogout: () => Promise<void>;
 }
 
 
-export function Sidebar({ active, onNavigate }: SidebarProps) {
+export function Sidebar({ active, username, onNavigate, onLogout }: SidebarProps) {
   return (
     <aside className="sidebar">
       <div className="sidebar__brand">
@@ -33,8 +35,17 @@ export function Sidebar({ active, onNavigate }: SidebarProps) {
         </button>
       </nav>
       <div className="sidebar__footer">
-        <span className="status-dot status-dot--success" />
-        系统服务正常
+        <div className="sidebar__service">
+          <span className="status-dot status-dot--success" />
+          系统服务正常
+        </div>
+        <div className="sidebar__account">
+          <UserCircle size={20} aria-hidden="true" />
+          <span title={username}>{username}</span>
+          <button type="button" onClick={() => void onLogout()} aria-label="退出登录">
+            <SignOut size={19} aria-hidden="true" />
+          </button>
+        </div>
       </div>
     </aside>
   );

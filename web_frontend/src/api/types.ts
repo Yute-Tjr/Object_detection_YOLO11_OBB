@@ -16,6 +16,11 @@ export type ImageStage =
 
 export type OverallResult = "OK" | "NG" | "UNKNOWN";
 
+export interface AuthUser {
+  id: string;
+  username: string;
+}
+
 export interface HealthResponse {
   apiReady: boolean;
   databaseReady: boolean;

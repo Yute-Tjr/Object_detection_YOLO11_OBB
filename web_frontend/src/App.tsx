@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { Sidebar, type AppPage } from "./components/Sidebar";
 import { HistoryPage } from "./pages/HistoryPage";
+import { LoginPage } from "./pages/LoginPage";
 import { TasksPage } from "./pages/TasksPage";
 
 function routeFromLocation() {
@@ -13,7 +15,8 @@ function routeFromLocation() {
   };
 }
 
-export function App() {
+function AuthenticatedApplication() {
+  const { user, logout } = useAuth();
   const [route, setRoute] = useState(routeFromLocation);
   useEffect(() => {
     const onPopState = () => setRoute(routeFromLocation());
@@ -36,7 +39,12 @@ export function App() {
 
   return (
     <main className="app-shell" aria-label="端子分区域检测与异常分类">
-      <Sidebar active={route.page} onNavigate={navigate} />
+      <Sidebar
+        active={route.page}
+        username={user?.username ?? ""}
+        onNavigate={navigate}
+        onLogout={logout}
+      />
       <section className="app-shell__content">
         {route.page === "tasks" ? <TasksPage /> : (
           <HistoryPage
@@ -47,5 +55,29 @@ export function App() {
         )}
       </section>
     </main>
+  );
+}
+
+
+function ApplicationGuard() {
+  const { status, login } = useAuth();
+  if (status === "loading") {
+    return (
+      <main className="auth-loading" aria-live="polite">
+        <span className="auth-loading__indicator" />
+        正在验证登录状态…
+      </main>
+    );
+  }
+  if (status === "anonymous") return <LoginPage onLogin={login} />;
+  return <AuthenticatedApplication />;
+}
+
+
+export function App() {
+  return (
+    <AuthProvider>
+      <ApplicationGuard />
+    </AuthProvider>
   );
 }

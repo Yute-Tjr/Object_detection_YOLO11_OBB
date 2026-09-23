@@ -1,4 +1,5 @@
 import type {
+  AuthUser,
   HealthResponse,
   ImageDetail,
   ImagePage,
@@ -11,9 +12,32 @@ import type {
 
 const API_ROOT = "/api/v1";
 
+type UnauthorizedListener = () => void;
+const unauthorizedListeners = new Set<UnauthorizedListener>();
+
+
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+
+export function subscribeUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_ROOT}${path}`, init);
+  const response = await fetch(`${API_ROOT}${path}`, {
+    ...init,
+    credentials: "same-origin",
+  });
   if (!response.ok) {
     let message = `请求失败（${response.status}）`;
     try {
@@ -22,7 +46,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       // Keep the status-based message when the server does not return JSON.
     }
-    throw new Error(message);
+    if (response.status === 401) {
+      unauthorizedListeners.forEach((listener) => listener());
+    }
+    throw new ApiError(message, response.status);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
@@ -40,6 +67,23 @@ function queryString(params: Record<string, string | number | undefined>): strin
 
 
 export const apiClient = {
+  getCurrentUser(signal?: AbortSignal): Promise<AuthUser> {
+    return request("/auth/me", { signal });
+  },
+
+  login(username: string, password: string, signal?: AbortSignal): Promise<AuthUser> {
+    return request("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password }),
+      signal,
+    });
+  },
+
+  logout(signal?: AbortSignal): Promise<void> {
+    return request("/auth/logout", { method: "POST", signal });
+  },
+
   getHealth(signal?: AbortSignal): Promise<HealthResponse> {
     return request("/health", { signal });
   },
