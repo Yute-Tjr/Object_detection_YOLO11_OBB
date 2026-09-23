@@ -19,6 +19,7 @@ from terminal_web.readiness import ReadinessStore
 from terminal_web.schemas import HealthResponse
 from terminal_web.storage import ArtifactStorage
 from terminal_web.worker import InspectionWorker
+from tests.web.auth_helpers import create_and_login
 
 
 def png_bytes(color: tuple[int, int, int]) -> bytes:
@@ -88,12 +89,17 @@ class EndToEndWorkflowTest(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.sessions = sessionmaker(bind=self.engine, expire_on_commit=False)
         app = create_app(
-            settings=SimpleNamespace(max_images_per_task=100),
+            settings=SimpleNamespace(
+                max_images_per_task=100,
+                session_ttl_hours=12,
+                session_cookie_secure=False,
+            ),
             session_factory=self.sessions,
             storage=self.storage,
             readiness=ReadyForUploads(),
         )
         self.client = TestClient(app)
+        create_and_login(self.client, self.sessions, username="e2e-tester")
 
     def tearDown(self):
         self.client.close()

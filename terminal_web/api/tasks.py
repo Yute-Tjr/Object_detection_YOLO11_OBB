@@ -22,6 +22,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from terminal_web.api.dependencies import (
     ReadinessProvider,
     get_app_settings,
+    get_current_user,
     get_readiness,
     get_repository,
     get_storage,
@@ -34,7 +35,11 @@ from terminal_web.schemas import ImagePage, TaskDetail, TaskPage
 from terminal_web.storage import ArtifactStorage, InvalidImageError
 
 
-router = APIRouter(prefix="/tasks", tags=["tasks"])
+router = APIRouter(
+    prefix="/tasks",
+    tags=["tasks"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _statuses_for_filter(value: str | None) -> list[TaskStatus] | None:

@@ -38,6 +38,16 @@ class HealthResponse(ApiModel):
     models_ready: bool
 
 
+class LoginRequest(ApiModel):
+    username: str
+    password: str
+
+
+class CurrentUserResponse(ApiModel):
+    id: uuid.UUID
+    username: str
+
+
 class ClassificationResponse(ApiModel):
     classifier_type: str
     predicted_label: str

@@ -23,6 +23,7 @@ from terminal_web.models import (
 )
 from terminal_web.schemas import HealthResponse
 from terminal_web.storage import ArtifactStorage
+from tests.web.auth_helpers import create_and_login
 
 
 def png_bytes(color=(10, 20, 30)) -> bytes:
@@ -60,7 +61,11 @@ class ApiTest(unittest.TestCase):
         Base.metadata.create_all(self.engine)
         self.session_factory = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.readiness = FakeReadiness()
-        settings = SimpleNamespace(max_images_per_task=100)
+        settings = SimpleNamespace(
+            max_images_per_task=100,
+            session_ttl_hours=12,
+            session_cookie_secure=False,
+        )
         app = create_app(
             settings=settings,
             session_factory=self.session_factory,
@@ -68,6 +73,7 @@ class ApiTest(unittest.TestCase):
             readiness=self.readiness,
         )
         self.client = TestClient(app)
+        create_and_login(self.client, self.session_factory)
 
     def tearDown(self):
         self.client.close()
@@ -303,7 +309,11 @@ class ApiTest(unittest.TestCase):
         Base.metadata.create_all(engine)
         session_factory = sessionmaker(bind=engine, expire_on_commit=False)
         app = create_app(
-            settings=SimpleNamespace(max_images_per_task=100),
+            settings=SimpleNamespace(
+                max_images_per_task=100,
+                session_ttl_hours=12,
+                session_cookie_secure=False,
+            ),
             session_factory=session_factory,
             storage=self.storage,
             readiness=self.readiness,
@@ -311,6 +321,7 @@ class ApiTest(unittest.TestCase):
 
         try:
             with TestClient(app) as client:
+                create_and_login(client, session_factory, username="pool-tester")
                 for _ in range(30):
                     response = client.get("/api/v1/tasks?status=all")
                     self.assertEqual(response.status_code, 200, response.text)

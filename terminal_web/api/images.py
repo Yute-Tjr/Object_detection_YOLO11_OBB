@@ -4,14 +4,18 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from terminal_web.api.dependencies import get_repository, get_storage
+from terminal_web.api.dependencies import get_current_user, get_repository, get_storage
 from terminal_web.api.presenters import image_detail, image_summary
 from terminal_web.repositories import TaskRepository
 from terminal_web.schemas import ImageDetail, ImageSummary
 from terminal_web.storage import ArtifactStorage
 
 
-router = APIRouter(prefix="/images", tags=["images"])
+router = APIRouter(
+    prefix="/images",
+    tags=["images"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/{image_id}", response_model=ImageDetail)
