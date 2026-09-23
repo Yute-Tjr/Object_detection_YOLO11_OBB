@@ -950,6 +950,11 @@ maybe_pull_updates() {
     [[ -f "$PROJECT_ROOT/deploy.sh" ]] || fatal "更新后找不到 deploy.sh。"
     [[ "$ASSUME_YES" == "true" ]] && restart_args+=(--yes)
     info "使用更新后的部署脚本重新检查环境与配置。"
+    if [[ -n "$APP_USER_USERNAME" || -n "$APP_USER_PASSWORD" ]]; then
+        INITIAL_APP_USERNAME=$APP_USER_USERNAME
+        INITIAL_APP_PASSWORD=$APP_USER_PASSWORD
+        export INITIAL_APP_USERNAME INITIAL_APP_PASSWORD
+    fi
     exec bash "$PROJECT_ROOT/deploy.sh" "${restart_args[@]}"
 }
 

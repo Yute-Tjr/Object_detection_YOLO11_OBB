@@ -1033,6 +1033,8 @@ exit 0
             project = Path(directory)
             prepare_fake_project(project)
             env = fake_docker_environment(project, volume_exists=True)
+            env["INITIAL_APP_USERNAME"] = "PulledOperator"
+            env["INITIAL_APP_PASSWORD"] = "PulledPass6"
             (project / ".env").write_text(
                 "\n".join(
                     (
@@ -1082,10 +1084,13 @@ exit 0
                 check=False,
             )
             git_commands = (project / "git-commands.log").read_text(encoding="utf-8")
+            docker_commands = (project / "docker-commands.log").read_text(encoding="utf-8")
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("pull --ff-only", git_commands)
         self.assertIn("使用更新后的部署脚本重新检查", result.stdout)
+        self.assertIn("manage_users.py add PulledOperator", docker_commands)
+        self.assertNotIn("PulledPass6", result.stdout + result.stderr + docker_commands)
 
     def test_first_install_runs_build_migration_and_health_checks(self):
         with tempfile.TemporaryDirectory() as directory:
