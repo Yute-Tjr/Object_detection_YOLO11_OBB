@@ -83,6 +83,7 @@ class FeedbackRepository:
                 feedback_id=feedback.id,
                 detection_id=item.detection_id,
                 region_label=region_labels[item.detection_id],
+                source=item.source,
                 verdict=item.verdict,
                 color=item.color,
             )

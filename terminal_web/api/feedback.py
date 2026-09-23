@@ -12,7 +12,9 @@ from terminal_web.feedback import (
     FeedbackConflictError,
     FeedbackValidationError,
     FeedbackValue,
+    LOGICAL_REGION_ORDER,
     LOGICAL_REGIONS,
+    feedback_region_order,
     logical_region,
     validate_feedback,
 )
@@ -36,7 +38,11 @@ def _feedback_view(
     feedback: ImageFeedback | None,
 ) -> ImageFeedbackView:
     detections = []
-    for detection in image.detections:
+    ordered_detections = sorted(
+        image.detections,
+        key=lambda item: feedback_region_order(item.region_label),
+    )
+    for detection in ordered_detections:
         presented = detection_response(detection)
         detections.append(
             FeedbackDetectionResponse(
@@ -48,13 +54,15 @@ def _feedback_view(
             )
         )
     detected_regions = {item.logical_region for item in detections}
-    candidates = sorted(LOGICAL_REGIONS - detected_regions)
+    candidates = [
+        region for region in LOGICAL_REGION_ORDER if region not in detected_regions
+    ]
 
     feedback_response = None
     if feedback is not None:
         item_by_detection = {item.detection_id: item for item in feedback.items}
         ordered_items = []
-        for detection in image.detections:
+        for detection in ordered_detections:
             item = item_by_detection.get(detection.id)
             if item is None:
                 continue
@@ -63,6 +71,7 @@ def _feedback_view(
                     detection_id=item.detection_id,
                     region_label=item.region_label,
                     logical_region=logical_region(item.region_label),
+                    source=item.source,
                     verdict=item.verdict,
                     color=item.color,
                 )
@@ -127,6 +136,7 @@ def update_feedback(
             detection_id=item.detection_id,
             verdict=item.verdict,
             color=item.color,
+            source="manual",
         )
         for item in payload.items
     )

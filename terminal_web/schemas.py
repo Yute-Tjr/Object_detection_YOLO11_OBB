@@ -116,7 +116,8 @@ class FeedbackItemResponse(ApiModel):
     detection_id: uuid.UUID
     region_label: str
     logical_region: str
-    verdict: FeedbackVerdict
+    source: Literal["manual", "model", "unreviewed"]
+    verdict: FeedbackVerdict | None = None
     color: FeedbackColor | None = None
 
 

@@ -60,7 +60,7 @@ class FeedbackApiTest(unittest.TestCase):
         create_and_login(self.client, self.session_factory, username="reviewer")
         self.image_id, self.detection_ids = self.seed_image(
             "T-feedback",
-            ("label1_thin", "label3", "label5"),
+            ("label3", "label5", "label1_thin"),
         )
 
     def tearDown(self):
@@ -108,11 +108,11 @@ class FeedbackApiTest(unittest.TestCase):
                     points=[[1, 1], [9, 1], [9, 9], [1, 9]],
                     selected_for_classification=label in {"label3", "label5"},
                 )
-                if label == "label3":
+                if label in {"label3", "label5"}:
                     detection.classifications.append(
                         ClassificationResult(
                             classifier_type="anomaly",
-                            predicted_label="OK",
+                            predicted_label="OK" if label == "label3" else "NG",
                             confidence=0.97,
                         )
                     )
@@ -166,6 +166,10 @@ class FeedbackApiTest(unittest.TestCase):
         )
         self.assertEqual(label1["logicalRegion"], "label1")
         self.assertEqual(label3["anomaly"]["predictedLabel"], "OK")
+        self.assertEqual(
+            [item["logicalRegion"] for item in payload["detections"]],
+            ["label1", "label3", "label5"],
+        )
         self.assertNotIn("label1", payload["missedRegionCandidates"])
         self.assertNotIn("label3", payload["missedRegionCandidates"])
         self.assertIn("label6", payload["missedRegionCandidates"])
@@ -194,6 +198,67 @@ class FeedbackApiTest(unittest.TestCase):
             )
             self.assertEqual(label1_item.verdict, "NG")
             self.assertEqual(label1_item.color, "R")
+            self.assertEqual(label1_item.source, "manual")
+
+    def test_partial_feedback_saves_complete_source_aware_snapshot(self):
+        response = self.put(
+            self.image_id,
+            {
+                "items": [
+                    {
+                        "detectionId": self.detection_ids["label3"],
+                        "verdict": "NG",
+                    }
+                ],
+                "missedRegions": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        items = response.json()["feedback"]["items"]
+        self.assertEqual(
+            [item["logicalRegion"] for item in items],
+            ["label1", "label3", "label5"],
+        )
+        self.assertEqual(
+            {
+                item["logicalRegion"]: (item["source"], item["verdict"])
+                for item in items
+            },
+            {
+                "label1": ("unreviewed", None),
+                "label3": ("manual", "NG"),
+                "label5": ("model", "NG"),
+            },
+        )
+
+    def test_removing_manual_item_restores_current_model_snapshot(self):
+        self.assertEqual(
+            self.put(self.image_id, self.valid_payload(verdict="OK")).status_code,
+            200,
+        )
+
+        response = self.put(
+            self.image_id,
+            {
+                "items": [
+                    {
+                        "detectionId": self.detection_ids["label3"],
+                        "verdict": "NG",
+                    }
+                ],
+                "missedRegions": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        by_region = {
+            item["logicalRegion"]: item for item in response.json()["feedback"]["items"]
+        }
+        self.assertEqual(by_region["label1"]["source"], "unreviewed")
+        self.assertIsNone(by_region["label1"]["verdict"])
+        self.assertEqual(by_region["label5"]["source"], "model")
+        self.assertEqual(by_region["label5"]["verdict"], "NG")
 
     def test_different_users_have_independent_feedback(self):
         self.assertEqual(
@@ -220,31 +285,45 @@ class FeedbackApiTest(unittest.TestCase):
                 2,
             )
 
-    def test_detection_ids_must_be_unique_and_match_current_image_exactly(self):
-        missing = self.valid_payload()
-        missing["items"].pop()
+    def test_detection_ids_must_be_unique_and_belong_to_current_image(self):
         duplicate = self.valid_payload()
         duplicate["items"].append(dict(duplicate["items"][0]))
         _, foreign_ids = self.seed_image("T-foreign", ("label2",))
         cross_image = self.valid_payload()
         cross_image["items"][0]["detectionId"] = foreign_ids["label2"]
 
-        self.assertEqual(self.put(self.image_id, missing).status_code, 409)
         self.assertEqual(self.put(self.image_id, duplicate).status_code, 422)
         self.assertEqual(self.put(self.image_id, cross_image).status_code, 409)
 
-        stale = self.valid_payload()
+    def test_unknown_model_output_is_not_promoted_to_feedback_truth(self):
         with self.session_factory() as session:
-            image = session.get(InspectionImage, uuid.UUID(self.image_id))
-            image.detections.append(
-                Detection(
-                    region_label="label4",
-                    confidence=0.8,
-                    points=[[1, 1], [9, 1], [9, 9], [1, 9]],
-                )
+            detection = session.get(
+                Detection, uuid.UUID(self.detection_ids["label5"])
             )
+            detection.classifications[0].predicted_label = "MAYBE"
             session.commit()
-        self.assertEqual(self.put(self.image_id, stale).status_code, 409)
+
+        response = self.put(
+            self.image_id,
+            {
+                "items": [
+                    {
+                        "detectionId": self.detection_ids["label3"],
+                        "verdict": "NG",
+                    }
+                ],
+                "missedRegions": [],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        label5 = next(
+            item
+            for item in response.json()["feedback"]["items"]
+            if item["logicalRegion"] == "label5"
+        )
+        self.assertEqual(label5["source"], "unreviewed")
+        self.assertIsNone(label5["verdict"])
 
     def test_color_and_verdict_validation_follows_region_semantics(self):
         invalid_verdict = self.valid_payload()
@@ -281,6 +360,11 @@ class FeedbackApiTest(unittest.TestCase):
 
         self.assertEqual(empty.status_code, 422)
         self.assertEqual(missed.status_code, 200, missed.text)
+
+    def test_detected_image_rejects_completely_empty_feedback(self):
+        response = self.put(self.image_id, {"items": [], "missedRegions": []})
+
+        self.assertEqual(response.status_code, 422)
 
     def test_unfinished_and_failed_images_reject_feedback(self):
         pending_id, _ = self.seed_image(

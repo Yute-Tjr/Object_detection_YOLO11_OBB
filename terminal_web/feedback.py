@@ -10,6 +10,14 @@ from terminal_web.models import Detection
 LOGICAL_REGIONS = frozenset(
     {"label1", "label2", "label3", "label4", "label5", "label6"}
 )
+LOGICAL_REGION_ORDER = (
+    "label1",
+    "label2",
+    "label3",
+    "label4",
+    "label5",
+    "label6",
+)
 LABEL1_VARIANTS = frozenset({"label1_thin", "label1_thick"})
 ALLOWED_COLORS = frozenset({"B", "G", "R", "W"})
 ALLOWED_VERDICTS = frozenset({"OK", "NG"})
@@ -26,12 +34,35 @@ class FeedbackConflictError(ValueError):
 @dataclass(frozen=True)
 class FeedbackValue:
     detection_id: uuid.UUID
-    verdict: str
+    verdict: str | None
     color: str | None
+    source: str = "manual"
 
 
 def logical_region(region_label: str) -> str:
     return "label1" if region_label in LABEL1_VARIANTS else region_label
+
+
+def feedback_region_order(region_label: str) -> tuple[int, str]:
+    region = logical_region(region_label)
+    try:
+        return LOGICAL_REGION_ORDER.index(region), region_label
+    except ValueError:
+        return len(LOGICAL_REGION_ORDER), region_label
+
+
+def _model_feedback(detection: Detection) -> tuple[str | None, str | None]:
+    classifications = {
+        item.classifier_type: item.predicted_label
+        for item in detection.classifications
+    }
+    verdict = classifications.get("anomaly")
+    if verdict not in ALLOWED_VERDICTS:
+        verdict = None
+    color = classifications.get("color")
+    if logical_region(detection.region_label) != "label1" or color not in ALLOWED_COLORS:
+        color = None
+    return verdict, color
 
 
 def validate_feedback(
@@ -43,8 +74,11 @@ def validate_feedback(
     submitted_ids = [item.detection_id for item in submitted_items]
     if len(submitted_ids) != len(set(submitted_ids)):
         raise FeedbackValidationError("detection IDs must be unique")
-    if set(submitted_ids) != set(detection_by_id):
+    if not set(submitted_ids).issubset(detection_by_id):
         raise FeedbackConflictError("detections changed; reload feedback before saving")
+
+    if not submitted_items and not missed_regions:
+        raise FeedbackValidationError("feedback requires a reviewed or missed region")
 
     for item in submitted_items:
         if item.verdict not in ALLOWED_VERDICTS:
@@ -64,9 +98,23 @@ def validate_feedback(
     detected_regions = {logical_region(item.region_label) for item in detections}
     if missed_set & detected_regions:
         raise FeedbackValidationError("detected regions cannot be marked as missed")
-    if not detections and not missed_set:
-        raise FeedbackValidationError(
-            "an image without detections requires at least one missed region"
+    submitted_by_id = {item.detection_id: item for item in submitted_items}
+    snapshot = []
+    for detection in sorted(detections, key=lambda item: feedback_region_order(item.region_label)):
+        manual = submitted_by_id.get(detection.id)
+        if manual is not None:
+            snapshot.append(manual)
+            continue
+        verdict, color = _model_feedback(detection)
+        snapshot.append(
+            FeedbackValue(
+                detection_id=detection.id,
+                verdict=verdict,
+                color=color,
+                source="model" if verdict is not None or color is not None else "unreviewed",
+            )
         )
 
-    return tuple(submitted_items), tuple(sorted(missed_set))
+    return tuple(snapshot), tuple(
+        sorted(missed_set, key=feedback_region_order)
+    )
