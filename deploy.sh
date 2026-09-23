@@ -179,6 +179,16 @@ validate_docker_image_prefix() {
 }
 
 
+configure_pytorch_distribution() {
+    if [[ "$DETECTION_DEVICE" == "cpu" && "$CLASSIFICATION_DEVICE" == "cpu" ]]; then
+        PYTORCH_INDEX_URL=${PYTORCH_CPU_INDEX_URL:-https://download.pytorch.org/whl/cpu}
+    else
+        PYTORCH_INDEX_URL=""
+    fi
+    export PYTORCH_INDEX_URL
+}
+
+
 write_env_file() {
     local destination=$1
     local temporary="${destination}.tmp.$$"
@@ -534,6 +544,11 @@ print_config_summary() {
     printf '  %-18s %s\n' "数据库密码" "************"
     printf '  %-18s %s\n' "检测设备" "$DETECTION_DEVICE"
     printf '  %-18s %s\n' "分类设备" "$CLASSIFICATION_DEVICE"
+    if [[ -n "$PYTORCH_INDEX_URL" ]]; then
+        printf '  %-18s %s\n' "Worker 依赖" "CPU-only PyTorch"
+    else
+        printf '  %-18s %s\n' "Worker 依赖" "CUDA PyTorch"
+    fi
     printf '  %-18s %s\n' "网页端口" "$WEB_PORT"
     printf '  %-18s %s\n' "单任务图片数" "$MAX_IMAGES_PER_TASK"
     if [[ "$CREATE_APP_USER" == "true" ]]; then
@@ -705,7 +720,7 @@ image_registry_unavailable_since() {
     log_since "$previous_line_count" \
         | grep -Eq '(auth\.docker\.io|registry-1\.docker\.io|m\.daocloud\.io|failed to (fetch anonymous token|authorize|resolve source metadata)|load metadata for)' \
         && log_since "$previous_line_count" \
-            | grep -Eq '(DeadlineExceeded|i/o timeout|TLS handshake timeout|context deadline exceeded|connection reset by peer)'
+            | grep -Eq '(DeadlineExceeded|i/o timeout|TLS handshake timeout|context deadline exceeded|connection reset by peer|connection refused)'
 }
 
 
@@ -1097,6 +1112,7 @@ main() {
     fi
     configure_app_user
     validate_configuration
+    configure_pytorch_distribution
     print_config_summary
 
     if [[ "$ASSUME_YES" != "true" ]] && ! prompt_yes_no "确认开始部署？" "yes"; then

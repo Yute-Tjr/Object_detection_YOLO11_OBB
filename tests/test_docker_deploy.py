@@ -82,6 +82,12 @@ if [[ " $* " == *" build --pull api "* \
     echo 'failed to authorize: failed to fetch anonymous token: Get "https://auth.docker.io/token": read tcp 192.168.3.29:57585->172.64.144.78:443: read: connection reset by peer' >&2
     exit 1
 fi
+if [[ " $* " == *" build --pull api "* \
+    && "${FAKE_REGISTRY_REFUSED:-false}" == "true" \
+    && "${PYTHON_BASE_IMAGE:-}" != *"m.daocloud.io/"* ]]; then
+    echo 'failed to authorize: failed to fetch anonymous token: Get "https://auth.docker.io/token": dial tcp 157.240.21.9:443: connect: connection refused' >&2
+    exit 1
+fi
 if [[ "${FAKE_HUB_AND_MIRROR_UNAVAILABLE:-false}" == "true" \
     && " $* " == *" build --pull api "* ]]; then
     if [[ "${PYTHON_BASE_IMAGE:-}" == *"m.daocloud.io/"* ]]; then
@@ -328,6 +334,29 @@ class DockerDeployScriptTest(unittest.TestCase):
             prepare_fake_project(project)
             env = fake_docker_environment(project, volume_exists=False)
             env["FAKE_REGISTRY_RESET"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(commands.count(" build --pull api\n"), 2)
+        self.assertNotIn(" build api\n", commands)
+        self.assertIn("切换到国内基础镜像源", result.stdout)
+
+    def test_registry_connection_refused_falls_back_to_domestic_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_REGISTRY_REFUSED"] = "true"
 
             result = subprocess.run(
                 [str(SCRIPT), "--yes", "--no-pull"],
@@ -680,10 +709,17 @@ class DockerDeployScriptTest(unittest.TestCase):
         )
 
         worker = base["services"]["worker"]
+        api = base["services"]["api"]
         postgres = base["services"]["postgres"]
         api_environment = base["services"]["api"]["environment"]
         gpu_worker = overlay["services"]["worker"]
 
+        self.assertEqual(api["build"]["dockerfile"], "deploy/api.Dockerfile")
+        self.assertEqual(worker["build"]["dockerfile"], "deploy/worker.Dockerfile")
+        self.assertEqual(
+            worker["build"]["args"]["PYTORCH_INDEX_URL"],
+            "${PYTORCH_INDEX_URL:-}",
+        )
         self.assertNotIn("deploy", worker)
         self.assertEqual(worker["depends_on"]["api"]["condition"], "service_healthy")
         self.assertEqual(
@@ -717,10 +753,75 @@ class DockerDeployScriptTest(unittest.TestCase):
             "Worker 必须看到全部 GPU，DETECTION_DEVICE=6 等宿主机编号才不会失效",
         )
 
-    def test_worker_image_copies_the_yolo_pipeline_package(self):
-        dockerfile = (ROOT / "deploy" / "api.Dockerfile").read_text(encoding="utf-8")
+    def test_api_and_worker_images_install_different_runtime_profiles(self):
+        api_dockerfile = (ROOT / "deploy" / "api.Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        worker_dockerfile = (ROOT / "deploy" / "worker.Dockerfile").read_text(
+            encoding="utf-8"
+        )
 
-        self.assertIn("COPY yolo11_obb ./yolo11_obb", dockerfile)
+        self.assertIn("/tmp/api-constraints.txt", api_dockerfile)
+        self.assertIn("--constraint /tmp/api-constraints.txt", api_dockerfile)
+        self.assertIn("sed -E", api_dockerfile)
+        self.assertNotIn("pip install -r requirements.txt", api_dockerfile)
+        self.assertNotIn("COPY yolo11_obb ./yolo11_obb", api_dockerfile)
+        self.assertNotIn("COPY obb_detection ./obb_detection", api_dockerfile)
+        self.assertIn("pip install -r requirements.txt", worker_dockerfile)
+        self.assertIn("ARG PYTORCH_INDEX_URL", worker_dockerfile)
+        self.assertIn("COPY yolo11_obb ./yolo11_obb", worker_dockerfile)
+        self.assertIn("COPY obb_detection ./obb_detection", worker_dockerfile)
+
+    def test_cpu_uses_cpu_only_pytorch_and_gpu_uses_cuda_distribution(self):
+        command = """
+            source "$1"
+            DETECTION_DEVICE="$2"
+            CLASSIFICATION_DEVICE="$3"
+            PYTORCH_CPU_INDEX_URL="${4:-}"
+            configure_pytorch_distribution
+            printf '%s' "$PYTORCH_INDEX_URL"
+        """
+
+        cpu = run_bash(
+            command,
+            SCRIPT,
+            "cpu",
+            "cpu",
+            "",
+        )
+        gpu = run_bash(
+            command,
+            SCRIPT,
+            "0",
+            "0",
+            "",
+        )
+        mixed = run_bash(
+            command,
+            SCRIPT,
+            "cpu",
+            "1",
+            "",
+        )
+        custom_cpu = run_bash(
+            command,
+            SCRIPT,
+            "cpu",
+            "cpu",
+            "https://mirror.example.com/pytorch/cpu",
+        )
+
+        self.assertEqual(cpu.returncode, 0, cpu.stderr)
+        self.assertEqual(cpu.stdout, "https://download.pytorch.org/whl/cpu")
+        self.assertEqual(gpu.returncode, 0, gpu.stderr)
+        self.assertEqual(gpu.stdout, "")
+        self.assertEqual(mixed.returncode, 0, mixed.stderr)
+        self.assertEqual(mixed.stdout, "")
+        self.assertEqual(custom_cpu.returncode, 0, custom_cpu.stderr)
+        self.assertEqual(
+            custom_cpu.stdout,
+            "https://mirror.example.com/pytorch/cpu",
+        )
 
     def test_docker_context_excludes_runtime_data_and_local_environments(self):
         dockerignore = ROOT / ".dockerignore"

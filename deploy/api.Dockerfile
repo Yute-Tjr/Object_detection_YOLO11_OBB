@@ -8,18 +8,31 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install --no-install-recommends -y fonts-noto-cjk libgl1 libglib2.0-0 \
+    && apt-get install --no-install-recommends -y libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install -r requirements.txt
+RUN sed -E 's/^([[:alnum:]_.-]+)\[[^]]+\](==.*)$/\1\2/' \
+        requirements.txt > /tmp/api-constraints.txt \
+    && pip install --constraint /tmp/api-constraints.txt \
+    alembic \
+    argon2-cffi \
+    fastapi \
+    numpy \
+    opencv-python \
+    pillow \
+    'psycopg[binary]' \
+    pydantic \
+    pydantic-settings \
+    python-multipart \
+    SQLAlchemy \
+    'uvicorn[standard]' \
+    && rm -f /tmp/api-constraints.txt
 
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY terminal_web ./terminal_web
-COPY scripts ./scripts
-COPY obb_detection ./obb_detection
-COPY yolo11_obb ./yolo11_obb
+COPY scripts/run_terminal_api.py scripts/manage_users.py ./scripts/
 
 RUN useradd --create-home --uid 10001 terminal \
     && mkdir -p /data/terminal-inspection \

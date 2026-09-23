@@ -57,9 +57,10 @@ services:
   worker:
     build:
       context: .
-      dockerfile: deploy/api.Dockerfile
+      dockerfile: deploy/worker.Dockerfile
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+        PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-}
     restart: unless-stopped
     command: ["python", "scripts/run_terminal_worker.py"]
     environment: *terminal-environment
