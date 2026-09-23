@@ -8,7 +8,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
 
 
-PASSWORD_MIN_LENGTH = 12
+PASSWORD_MIN_LENGTH = 6
 SESSION_COOKIE_NAME = "terminal_session"
 
 _PASSWORD_HASHER = PasswordHasher()

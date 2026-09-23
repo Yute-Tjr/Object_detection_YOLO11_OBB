@@ -99,7 +99,7 @@ class ManageUsersTest(unittest.TestCase):
         )
 
         self.assertNotEqual(short_code, 0)
-        self.assertIn("12", short_error)
+        self.assertIn("6", short_error)
         self.assertNotEqual(mismatch_code, 0)
         self.assertIn("不一致", mismatch_error)
         with self.session_factory() as session:
@@ -107,6 +107,14 @@ class ManageUsersTest(unittest.TestCase):
                 session.scalar(select(func.count()).select_from(User)),
                 0,
             )
+
+    def test_add_accepts_six_character_password_with_confirmation(self):
+        exit_code, _, error = self.run_command(
+            ["add", "six-user"],
+            ["123456", "123456"],
+        )
+
+        self.assertEqual(exit_code, 0, error)
 
     def test_reset_password_replaces_hash_and_revokes_sessions(self):
         with self.session_factory() as session:

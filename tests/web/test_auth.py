@@ -39,8 +39,10 @@ class AuthenticationPrimitiveTest(unittest.TestCase):
         self.assertFalse(verify_password(encoded, "wrong password"))
 
     def test_password_hash_rejects_short_password(self):
-        with self.assertRaisesRegex(ValueError, str(PASSWORD_MIN_LENGTH)):
-            hash_password("short")
+        self.assertEqual(PASSWORD_MIN_LENGTH, 6)
+        with self.assertRaisesRegex(ValueError, "6"):
+            hash_password("12345")
+        self.assertTrue(hash_password("123456").startswith("$argon2id$"))
 
     def test_malformed_password_hash_fails_closed(self):
         self.assertFalse(verify_password("not-a-valid-hash", "irrelevant password"))

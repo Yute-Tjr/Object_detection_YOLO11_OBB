@@ -411,11 +411,11 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertEqual(update.stdout.strip(), "update")
         self.assertEqual(orphaned.stdout.strip(), "orphaned_volume")
 
-    def test_database_password_requires_twelve_url_safe_characters(self):
+    def test_database_password_requires_six_url_safe_characters(self):
         command = 'source "$1"; validate_db_password "$2"'
 
-        valid = run_bash(command, SCRIPT, "SafePass_2026")
-        short = run_bash(command, SCRIPT, "Short_1")
+        valid = run_bash(command, SCRIPT, "Db_123")
+        short = run_bash(command, SCRIPT, "Db_12")
         reserved = run_bash(command, SCRIPT, "Unsafe@Pass_2026")
         placeholder = run_bash(command, SCRIPT, "replace_with_a_strong_password")
 
@@ -446,13 +446,13 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("PASSWORD=FreshPass_2026", result.stdout)
 
-    def test_update_allows_legacy_short_password_but_first_install_rejects_it(self):
+    def test_six_character_password_is_valid_for_install_and_update(self):
         command = """
             source "$1"
             DEPLOYMENT_MODE="$2"
             POSTGRES_DB=terminal_inspection
             POSTGRES_USER=terminal
-            POSTGRES_PASSWORD=terminal
+            POSTGRES_PASSWORD=Db_123
             POSTGRES_BIND_ADDRESS=127.0.0.1
             POSTGRES_PORT=5432
             WEB_PORT=8080
@@ -468,8 +468,8 @@ class DockerDeployScriptTest(unittest.TestCase):
         first_install = run_bash(command, SCRIPT, "first_install")
 
         self.assertEqual(update.returncode, 0, update.stderr)
-        self.assertIn("旧数据库密码少于 12 位", update.stdout)
-        self.assertNotEqual(first_install.returncode, 0)
+        self.assertNotIn("旧数据库密码少于", update.stdout)
+        self.assertEqual(first_install.returncode, 0, first_install.stderr)
 
     def test_writes_private_explicit_docker_environment(self):
         with tempfile.TemporaryDirectory() as directory:

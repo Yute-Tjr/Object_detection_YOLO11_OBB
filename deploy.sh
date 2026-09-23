@@ -124,7 +124,7 @@ detect_deployment_mode() {
 validate_db_password() {
     local password=$1
     [[ "$password" != "replace_with_a_strong_password" ]] \
-        && [[ ${#password} -ge 12 ]] \
+        && [[ ${#password} -ge 6 ]] \
         && validate_db_password_charset "$password"
 }
 
@@ -329,7 +329,7 @@ prompt_new_password() {
         return
     fi
     while true; do
-        printf '  数据库密码（至少 12 位，仅限字母、数字、._~-）: '
+        printf '  数据库密码（至少 6 位，仅限字母、数字、._~-）: '
         IFS= read -rs first
         printf '\n  再次输入数据库密码: '
         IFS= read -rs second
@@ -337,7 +337,7 @@ prompt_new_password() {
         if [[ "$first" != "$second" ]]; then
             warning "两次密码不一致，请重新输入。"
         elif ! validate_db_password "$first"; then
-            warning "密码至少 12 位，且只能包含字母、数字、点、下划线、波浪线和连字符。"
+            warning "密码至少 6 位，且只能包含字母、数字、点、下划线、波浪线和连字符。"
         else
             POSTGRES_PASSWORD=$first
             export POSTGRES_PASSWORD
@@ -411,11 +411,8 @@ validate_configuration() {
         if [[ "$POSTGRES_PASSWORD" == "replace_with_a_strong_password" ]]; then
             warning "当前数据库仍在使用示例占位密码；本次更新不会自动改库，请尽快安排密码轮换。"
         fi
-        if (( ${#POSTGRES_PASSWORD} < 12 )); then
-            warning "旧数据库密码少于 12 位，本次更新继续复用；请另行安排数据库密码轮换。"
-        fi
     elif ! validate_db_password "$POSTGRES_PASSWORD"; then
-        fatal "数据库密码至少需要 12 位，且不能使用示例占位密码。"
+        fatal "数据库密码至少需要 6 位，且不能使用示例占位密码。"
     fi
     [[ "$POSTGRES_BIND_ADDRESS" == "127.0.0.1" || "$POSTGRES_BIND_ADDRESS" == "localhost" ]] || fatal "数据库仅允许绑定到 127.0.0.1 或 localhost。"
     validate_port "$POSTGRES_PORT" || fatal "PostgreSQL 端口无效。"
