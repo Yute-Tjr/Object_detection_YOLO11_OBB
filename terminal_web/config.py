@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     max_images_per_task: int = 100
     task_max_attempts: int = 2
     worker_heartbeat_timeout_seconds: int = 120
+    session_ttl_hours: int = Field(
+        default=12,
+        ge=1,
+        le=168,
+        validation_alias="SESSION_TTL_HOURS",
+    )
+    session_cookie_secure: bool = Field(
+        default=False,
+        validation_alias="SESSION_COOKIE_SECURE",
+    )
 
     @field_validator("database_url")
     @classmethod

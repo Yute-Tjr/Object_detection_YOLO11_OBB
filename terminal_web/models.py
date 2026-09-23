@@ -117,6 +117,9 @@ class InspectionImage(TimestampMixin, Base):
     detections: Mapped[list[Detection]] = relationship(
         back_populates="image", cascade="all, delete-orphan"
     )
+    feedbacks: Mapped[list[ImageFeedback]] = relationship(
+        back_populates="image", cascade="all, delete-orphan"
+    )
 
 
 class Detection(TimestampMixin, Base):
@@ -159,3 +162,108 @@ class ClassificationResult(TimestampMixin, Base):
 
     detection: Mapped[Detection] = relationship(back_populates="classifications")
     model: Mapped[ModelRecord | None] = relationship()
+
+
+class User(TimestampMixin, Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    sessions: Mapped[list[UserSession]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    feedbacks: Mapped[list[ImageFeedback]] = relationship(
+        back_populates="user", passive_deletes=True
+    )
+
+
+class UserSession(TimestampMixin, Base):
+    __tablename__ = "user_sessions"
+    __table_args__ = (Index("ix_user_sessions_user_id", "user_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped[User] = relationship(back_populates="sessions")
+
+
+class ImageFeedback(TimestampMixin, Base):
+    __tablename__ = "image_feedbacks"
+    __table_args__ = (
+        UniqueConstraint("user_id", "image_id", name="uq_feedback_user_image"),
+        Index("ix_image_feedbacks_user_id", "user_id"),
+        Index("ix_image_feedbacks_image_id", "image_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    image_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inspection_images.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False
+    )
+
+    image: Mapped[InspectionImage] = relationship(back_populates="feedbacks")
+    user: Mapped[User] = relationship(back_populates="feedbacks")
+    items: Mapped[list[ImageFeedbackItem]] = relationship(
+        back_populates="feedback", cascade="all, delete-orphan"
+    )
+    misses: Mapped[list[ImageFeedbackMiss]] = relationship(
+        back_populates="feedback", cascade="all, delete-orphan"
+    )
+
+
+class ImageFeedbackItem(TimestampMixin, Base):
+    __tablename__ = "image_feedback_items"
+    __table_args__ = (
+        UniqueConstraint(
+            "feedback_id", "detection_id", name="uq_feedback_detection"
+        ),
+        Index("ix_image_feedback_items_feedback_id", "feedback_id"),
+        Index("ix_image_feedback_items_detection_id", "detection_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    feedback_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("image_feedbacks.id", ondelete="CASCADE"), nullable=False
+    )
+    detection_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("detections.id", ondelete="RESTRICT"), nullable=False
+    )
+    region_label: Mapped[str] = mapped_column(String(64), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(2), nullable=False)
+    color: Mapped[str | None] = mapped_column(String(1))
+
+    feedback: Mapped[ImageFeedback] = relationship(back_populates="items")
+    detection: Mapped[Detection] = relationship()
+
+
+class ImageFeedbackMiss(TimestampMixin, Base):
+    __tablename__ = "image_feedback_misses"
+    __table_args__ = (
+        UniqueConstraint(
+            "feedback_id", "logical_region", name="uq_feedback_missed_region"
+        ),
+        Index("ix_image_feedback_misses_feedback_id", "feedback_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    feedback_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("image_feedbacks.id", ondelete="CASCADE"), nullable=False
+    )
+    logical_region: Mapped[str] = mapped_column(String(16), nullable=False)
+
+    feedback: Mapped[ImageFeedback] = relationship(back_populates="misses")
