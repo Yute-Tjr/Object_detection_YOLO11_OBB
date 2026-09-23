@@ -12,6 +12,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "deploy.sh"
+NGINX_CONFIG = ROOT / "deploy" / "nginx.conf"
 
 
 def terminal_display_width(text: str) -> int:
@@ -150,6 +151,12 @@ exit 0
 
 
 class DockerDeployScriptTest(unittest.TestCase):
+    def test_nginx_preserves_public_host_port_for_same_origin_checks(self):
+        config = NGINX_CONFIG.read_text(encoding="utf-8")
+
+        self.assertIn("proxy_set_header Host $http_host;", config)
+        self.assertNotIn("proxy_set_header Host $host;", config)
+
     def test_banner_lines_have_the_same_terminal_display_width(self):
         for title in (
             "首次部署 · Docker Compose",
