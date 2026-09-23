@@ -878,7 +878,7 @@
 
 .feedback-region {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) auto auto;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
   gap: 18px;
   align-items: center;
   padding: 14px 16px;
@@ -887,9 +887,45 @@
   background: #fbfcfe;
 }
 
+.feedback-region--manual {
+  border-color: #a8c7fa;
+  background: #f7faff;
+}
+
+.feedback-region__identity {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
 .feedback-region__name strong,
 .feedback-region__name span {
   display: block;
+}
+
+.feedback-manual-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  color: #526074;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.feedback-manual-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-primary);
+}
+
+.feedback-region__baseline {
+  grid-column: 2 / -1;
+  margin: 0;
+  color: #778399;
+  font-size: 12px;
 }
 
 .feedback-region__name strong {

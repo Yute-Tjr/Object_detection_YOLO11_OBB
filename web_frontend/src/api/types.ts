@@ -23,6 +23,7 @@ export interface AuthUser {
 
 export type FeedbackVerdict = "OK" | "NG";
 export type FeedbackColor = "B" | "G" | "R" | "W";
+export type FeedbackSource = "manual" | "model" | "unreviewed";
 export type LogicalRegion = "label1" | "label2" | "label3" | "label4" | "label5" | "label6";
 
 export interface HealthResponse {
@@ -62,7 +63,8 @@ export interface FeedbackItem {
   detectionId: string;
   regionLabel: string;
   logicalRegion: LogicalRegion;
-  verdict: FeedbackVerdict;
+  source: FeedbackSource;
+  verdict?: FeedbackVerdict | null;
   color?: FeedbackColor | null;
 }
 

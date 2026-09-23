@@ -14,6 +14,17 @@ const emptyFeedback: ImageFeedbackView = {
   status: "succeeded",
   detections: [
     {
+      detectionId: "d3",
+      regionLabel: "label3",
+      logicalRegion: "label3",
+      anomaly: {
+        classifierType: "anomaly",
+        predictedLabel: "OK",
+        confidence: 0.97,
+      },
+      color: null,
+    },
+    {
       detectionId: "d1",
       regionLabel: "label1_thick",
       logicalRegion: "label1",
@@ -21,14 +32,21 @@ const emptyFeedback: ImageFeedbackView = {
       color: null,
     },
     {
-      detectionId: "d3",
-      regionLabel: "label3",
-      logicalRegion: "label3",
+      detectionId: "d6",
+      regionLabel: "label6",
+      logicalRegion: "label6",
+      anomaly: null,
+      color: null,
+    },
+    {
+      detectionId: "d2",
+      regionLabel: "label2",
+      logicalRegion: "label2",
       anomaly: null,
       color: null,
     },
   ],
-  missedRegionCandidates: ["label2", "label4", "label5", "label6"],
+  missedRegionCandidates: ["label5", "label4"],
   feedback: null,
 };
 
@@ -41,6 +59,7 @@ function client(view: ImageFeedbackView = emptyFeedback) {
         id: "feedback-1",
         items: payload.items.map((item: { detectionId: string; verdict: "OK" | "NG"; color?: "B" | "G" | "R" | "W" }) => ({
           ...item,
+          source: "manual" as const,
           regionLabel: item.detectionId === "d1" ? "label1_thick" : "label3",
           logicalRegion: item.detectionId === "d1" ? "label1" : "label3",
         })),
@@ -56,7 +75,7 @@ afterEach(cleanup);
 
 
 describe("FeedbackDialog", () => {
-  it("starts blank, distinguishes label1 variant, and submits detected plus missed regions", async () => {
+  it("sorts logical regions and submits only the manually selected region", async () => {
     const api = client();
     const onSaved = vi.fn();
     const user = userEvent.setup();
@@ -71,26 +90,26 @@ describe("FeedbackDialog", () => {
     );
 
     const dialog = await screen.findByRole("dialog", { name: "检测结果反馈" });
+    expect(within(dialog).getAllByTestId("feedback-region-name").map((item) => item.textContent)).toEqual([
+      "label1实际检测：label1_thick",
+      "label2",
+      "label3",
+      "label6",
+    ]);
     expect(within(dialog).getByText("实际检测：label1_thick")).toBeInTheDocument();
-    expect(within(dialog).getByRole("radio", { name: "label1 OK" })).not.toBeChecked();
-    expect(within(dialog).getByRole("radio", { name: "label1 NG" })).not.toBeChecked();
-    expect(within(dialog).queryByRole("radio", { name: "label3 颜色 B" })).not.toBeInTheDocument();
+    expect(within(dialog).getByText("沿用模型：OK")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("暂无分类结果")).toHaveLength(3);
 
     await user.click(within(dialog).getByRole("button", { name: "提交反馈" }));
-    expect(within(dialog).getByRole("alert")).toHaveTextContent("请完成所有已检测区域的判定");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("请至少反馈一个区域或选择一个漏检区域");
 
-    await user.click(within(dialog).getByRole("radio", { name: "label1 NG" }));
-    await user.click(within(dialog).getByRole("radio", { name: "label1 颜色 R" }));
-    await user.click(within(dialog).getByRole("radio", { name: "label3 OK" }));
-    await user.click(within(dialog).getByRole("checkbox", { name: "label2 漏检" }));
+    await user.click(within(dialog).getByRole("checkbox", { name: "label3 人工反馈" }));
+    await user.click(within(dialog).getByRole("radio", { name: "label3 NG" }));
     await user.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     await waitFor(() => expect(api.updateImageFeedback).toHaveBeenCalledWith("image-1", {
-      items: [
-        { detectionId: "d1", verdict: "NG", color: "R" },
-        { detectionId: "d3", verdict: "OK" },
-      ],
-      missedRegions: ["label2"],
+      items: [{ detectionId: "d3", verdict: "NG" }],
+      missedRegions: [],
     }));
     expect(onSaved).toHaveBeenCalledTimes(1);
   });
@@ -116,8 +135,10 @@ describe("FeedbackDialog", () => {
       feedback: {
         id: "feedback-1",
         items: [
-          { detectionId: "d1", regionLabel: "label1_thick", logicalRegion: "label1", verdict: "OK", color: "G" },
-          { detectionId: "d3", regionLabel: "label3", logicalRegion: "label3", verdict: "NG", color: null },
+          { detectionId: "d1", regionLabel: "label1_thick", logicalRegion: "label1", source: "manual", verdict: "OK", color: "G" },
+          { detectionId: "d2", regionLabel: "label2", logicalRegion: "label2", source: "unreviewed", verdict: null, color: null },
+          { detectionId: "d3", regionLabel: "label3", logicalRegion: "label3", source: "model", verdict: "OK", color: null },
+          { detectionId: "d6", regionLabel: "label6", logicalRegion: "label6", source: "unreviewed", verdict: null, color: null },
         ],
         missedRegions: ["label4"],
         createdAt: "2026-09-23T01:00:00Z",
@@ -131,7 +152,8 @@ describe("FeedbackDialog", () => {
 
     expect(await screen.findByRole("radio", { name: "label1 OK" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "label1 颜色 G" })).toBeChecked();
-    expect(screen.getByRole("radio", { name: "label3 NG" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "label1 人工反馈" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "label3 人工反馈" })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: "label4 漏检" })).toBeChecked();
     await user.click(screen.getByRole("radio", { name: "label1 NG" }));
     await user.click(screen.getByRole("radio", { name: "label1 颜色 R" }));
@@ -140,6 +162,36 @@ describe("FeedbackDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("保存失败");
     expect(screen.getByRole("radio", { name: "label1 NG" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "label1 颜色 R" })).toBeChecked();
+  });
+
+  it("can remove an existing manual item and keep only a missed-region correction", async () => {
+    const view: ImageFeedbackView = {
+      ...emptyFeedback,
+      feedback: {
+        id: "feedback-1",
+        items: [
+          { detectionId: "d1", regionLabel: "label1_thick", logicalRegion: "label1", source: "manual", verdict: "OK", color: "G" },
+          { detectionId: "d2", regionLabel: "label2", logicalRegion: "label2", source: "unreviewed", verdict: null, color: null },
+          { detectionId: "d3", regionLabel: "label3", logicalRegion: "label3", source: "model", verdict: "OK", color: null },
+          { detectionId: "d6", regionLabel: "label6", logicalRegion: "label6", source: "unreviewed", verdict: null, color: null },
+        ],
+        missedRegions: [],
+        createdAt: "2026-09-23T01:00:00Z",
+        updatedAt: "2026-09-23T01:00:00Z",
+      },
+    };
+    const api = client(view);
+    const user = userEvent.setup();
+    render(<FeedbackDialog imageId="image-1" filename="terminal.png" client={api} onClose={vi.fn()} onSaved={vi.fn()} />);
+
+    await user.click(await screen.findByRole("checkbox", { name: "label1 人工反馈" }));
+    await user.click(screen.getByRole("checkbox", { name: "label4 漏检" }));
+    await user.click(screen.getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => expect(api.updateImageFeedback).toHaveBeenCalledWith("image-1", {
+      items: [],
+      missedRegions: ["label4"],
+    }));
   });
 
   it("allows retry after loading fails", async () => {
@@ -153,7 +205,7 @@ describe("FeedbackDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("加载失败");
     await user.click(screen.getByRole("button", { name: "重试加载反馈" }));
 
-    expect(await screen.findByRole("radio", { name: "label1 OK" })).toBeInTheDocument();
+    expect(await screen.findByRole("checkbox", { name: "label1 人工反馈" })).toBeInTheDocument();
     expect(api.getImageFeedback).toHaveBeenCalledTimes(2);
   });
 });

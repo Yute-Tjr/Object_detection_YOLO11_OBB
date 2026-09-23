@@ -22,6 +22,7 @@ interface FeedbackDialogProps {
 }
 
 interface DraftItem {
+  manual: boolean;
   verdict?: FeedbackVerdict;
   color?: FeedbackColor;
 }
@@ -32,6 +33,33 @@ interface FeedbackDraft {
 }
 
 const COLORS: FeedbackColor[] = ["B", "G", "R", "W"];
+const LOGICAL_REGION_ORDER: LogicalRegion[] = [
+  "label1",
+  "label2",
+  "label3",
+  "label4",
+  "label5",
+  "label6",
+];
+const REGION_ORDER = new Map(LOGICAL_REGION_ORDER.map((region, index) => [region, index]));
+
+
+function compareRegions(left: LogicalRegion, right: LogicalRegion) {
+  return (REGION_ORDER.get(left) ?? Number.MAX_SAFE_INTEGER)
+    - (REGION_ORDER.get(right) ?? Number.MAX_SAFE_INTEGER);
+}
+
+
+function baselineText(detection: ImageFeedbackView["detections"][number]) {
+  const values: string[] = [];
+  if (detection.anomaly?.predictedLabel === "OK" || detection.anomaly?.predictedLabel === "NG") {
+    values.push(detection.anomaly.predictedLabel);
+  }
+  if (COLORS.includes(detection.color?.predictedLabel as FeedbackColor)) {
+    values.push(detection.color!.predictedLabel);
+  }
+  return values.length ? `沿用模型：${values.join(" / ")}` : "暂无分类结果";
+}
 
 
 function draftFromView(view: ImageFeedbackView): FeedbackDraft {
@@ -41,10 +69,12 @@ function draftFromView(view: ImageFeedbackView): FeedbackDraft {
   const items: Record<string, DraftItem> = {};
   view.detections.forEach((detection) => {
     const feedback = existing.get(detection.detectionId);
-    items[detection.detectionId] = feedback ? {
-      verdict: feedback.verdict,
-      color: feedback.color ?? undefined,
-    } : {};
+    const manual = feedback?.source === "manual";
+    items[detection.detectionId] = {
+      manual,
+      verdict: manual ? feedback.verdict ?? undefined : undefined,
+      color: manual ? feedback.color ?? undefined : undefined,
+    };
   });
   return {
     items,
@@ -111,6 +141,22 @@ export function FeedbackDialog({
     setError(null);
   };
 
+  const toggleManual = (detectionId: string) => {
+    setDraft((current) => {
+      if (!current) return current;
+      const item = current.items[detectionId] ?? { manual: false };
+      const manual = !item.manual;
+      return {
+        ...current,
+        items: {
+          ...current.items,
+          [detectionId]: manual ? { ...item, manual } : { manual },
+        },
+      };
+    });
+    setError(null);
+  };
+
   const toggleMissed = (region: LogicalRegion) => {
     setDraft((current) => {
       if (!current) return current;
@@ -124,14 +170,26 @@ export function FeedbackDialog({
 
   const submit = async () => {
     if (!view || !draft || submitting) return;
-    const incomplete = view.detections.some(
+    const orderedDetections = [...view.detections].sort((left, right) => (
+      compareRegions(left.logicalRegion, right.logicalRegion)
+    ));
+    const manualDetections = orderedDetections.filter(
+      (detection) => draft.items[detection.detectionId]?.manual,
+    );
+    if (manualDetections.length === 0 && draft.missedRegions.size === 0) {
+      setError(view.detections.length === 0
+        ? "请至少选择一个漏检区域"
+        : "请至少反馈一个区域或选择一个漏检区域");
+      return;
+    }
+    const incomplete = manualDetections.some(
       (detection) => !draft.items[detection.detectionId]?.verdict,
     );
     if (incomplete) {
-      setError("请完成所有已检测区域的判定");
+      setError("请完成已选择人工反馈区域的判定");
       return;
     }
-    const label1WithoutColor = view.detections.some(
+    const label1WithoutColor = manualDetections.some(
       (detection) => detection.logicalRegion === "label1"
         && !draft.items[detection.detectionId]?.color,
     );
@@ -139,13 +197,8 @@ export function FeedbackDialog({
       setError("请为 label1 选择颜色");
       return;
     }
-    if (view.detections.length === 0 && draft.missedRegions.size === 0) {
-      setError("请至少选择一个漏检区域");
-      return;
-    }
-
     const payload: FeedbackUpdateRequest = {
-      items: view.detections.map((detection) => {
+      items: manualDetections.map((detection) => {
         const item = draft.items[detection.detectionId];
         const result: FeedbackUpdateRequest["items"][number] = {
           detectionId: detection.detectionId,
@@ -154,7 +207,7 @@ export function FeedbackDialog({
         if (detection.logicalRegion === "label1") result.color = item.color;
         return result;
       }),
-      missedRegions: view.missedRegionCandidates.filter(
+      missedRegions: [...view.missedRegionCandidates].sort(compareRegions).filter(
         (region) => draft.missedRegions.has(region),
       ),
     };
@@ -207,52 +260,69 @@ export function FeedbackDialog({
             <>
               <div className="feedback-dialog__section-heading">
                 <h3>已检测区域</h3>
-                <span>请按实际情况确认，不默认采用模型结果</span>
+                <span>只需选择需要纠正的区域，未选择项沿用原结果</span>
               </div>
               {view.detections.length ? (
                 <div className="feedback-regions">
-                  {view.detections.map((detection) => {
-                    const item = draft.items[detection.detectionId] ?? {};
+                  {[...view.detections].sort((left, right) => (
+                    compareRegions(left.logicalRegion, right.logicalRegion)
+                  )).map((detection) => {
+                    const item = draft.items[detection.detectionId] ?? { manual: false };
                     return (
-                      <article className="feedback-region" key={detection.detectionId}>
-                        <div className="feedback-region__name">
-                          <strong>{detection.logicalRegion}</strong>
-                          {detection.logicalRegion === "label1" ? (
-                            <span>实际检测：{detection.regionLabel}</span>
-                          ) : null}
+                      <article className={`feedback-region${item.manual ? " feedback-region--manual" : ""}`} key={detection.detectionId}>
+                        <div className="feedback-region__identity">
+                          <div className="feedback-region__name" data-testid="feedback-region-name">
+                            <strong>{detection.logicalRegion}</strong>
+                            {detection.logicalRegion === "label1" ? (
+                              <span>实际检测：{detection.regionLabel}</span>
+                            ) : null}
+                          </div>
+                          <label className="feedback-manual-toggle">
+                            <input
+                              type="checkbox"
+                              aria-label={`${detection.logicalRegion} 人工反馈`}
+                              checked={item.manual}
+                              onChange={() => toggleManual(detection.detectionId)}
+                            />
+                            <span>人工反馈</span>
+                          </label>
                         </div>
-                        <fieldset aria-label={`${detection.logicalRegion} 判定`}>
-                          <legend>实际结果</legend>
-                          {(["OK", "NG"] as FeedbackVerdict[]).map((verdict) => (
-                            <label key={verdict} className={`feedback-choice feedback-choice--${verdict.toLowerCase()}`}>
-                              <input
-                                type="radio"
-                                name={`verdict-${detection.detectionId}`}
-                                aria-label={`${detection.logicalRegion} ${verdict}`}
-                                checked={item.verdict === verdict}
-                                onChange={() => setItem(detection.detectionId, { verdict })}
-                              />
-                              {verdict}
-                            </label>
-                          ))}
-                        </fieldset>
-                        {detection.logicalRegion === "label1" ? (
-                          <fieldset aria-label="label1 颜色">
-                            <legend>实际颜色</legend>
-                            {COLORS.map((color) => (
-                              <label key={color} className="feedback-choice">
-                                <input
-                                  type="radio"
-                                  name={`color-${detection.detectionId}`}
-                                  aria-label={`label1 颜色 ${color}`}
-                                  checked={item.color === color}
-                                  onChange={() => setItem(detection.detectionId, { color })}
-                                />
-                                {color}
-                              </label>
-                            ))}
-                          </fieldset>
-                        ) : null}
+                        {item.manual ? (
+                          <>
+                            <fieldset aria-label={`${detection.logicalRegion} 判定`}>
+                              <legend>实际结果</legend>
+                              {(["OK", "NG"] as FeedbackVerdict[]).map((verdict) => (
+                                <label key={verdict} className={`feedback-choice feedback-choice--${verdict.toLowerCase()}`}>
+                                  <input
+                                    type="radio"
+                                    name={`verdict-${detection.detectionId}`}
+                                    aria-label={`${detection.logicalRegion} ${verdict}`}
+                                    checked={item.verdict === verdict}
+                                    onChange={() => setItem(detection.detectionId, { verdict })}
+                                  />
+                                  {verdict}
+                                </label>
+                              ))}
+                            </fieldset>
+                            {detection.logicalRegion === "label1" ? (
+                              <fieldset aria-label="label1 颜色">
+                                <legend>实际颜色</legend>
+                                {COLORS.map((color) => (
+                                  <label key={color} className="feedback-choice">
+                                    <input
+                                      type="radio"
+                                      name={`color-${detection.detectionId}`}
+                                      aria-label={`label1 颜色 ${color}`}
+                                      checked={item.color === color}
+                                      onChange={() => setItem(detection.detectionId, { color })}
+                                    />
+                                    {color}
+                                  </label>
+                                ))}
+                              </fieldset>
+                            ) : null}
+                          </>
+                        ) : <p className="feedback-region__baseline">{baselineText(detection)}</p>}
                       </article>
                     );
                   })}
@@ -267,7 +337,7 @@ export function FeedbackDialog({
               </div>
               {view.missedRegionCandidates.length ? (
                 <div className="feedback-missed-regions">
-                  {view.missedRegionCandidates.map((region) => (
+                  {[...view.missedRegionCandidates].sort(compareRegions).map((region) => (
                     <label key={region} className="feedback-missed-choice">
                       <input
                         type="checkbox"
