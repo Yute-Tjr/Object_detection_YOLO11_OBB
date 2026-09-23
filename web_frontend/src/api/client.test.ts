@@ -130,7 +130,7 @@ describe("apiClient", () => {
     );
   });
 
-  it("loads and updates the selected image feedback", async () => {
+  it("loads, updates, and deletes the selected image feedback", async () => {
     const feedback = {
       imageId: "image-1",
       originalFilename: "terminal.png",
@@ -152,6 +152,7 @@ describe("apiClient", () => {
       items: [{ detectionId: "d1", verdict: "NG", color: "R" }],
       missedRegions: ["label6"],
     });
+    await apiClient.deleteImageFeedback("image/1");
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/images/image%2F1/feedback");
     expect(fetchMock.mock.calls[1]).toEqual([
@@ -163,6 +164,13 @@ describe("apiClient", () => {
           items: [{ detectionId: "d1", verdict: "NG", color: "R" }],
           missedRegions: ["label6"],
         }),
+      }),
+    ]);
+    expect(fetchMock.mock.calls[2]).toEqual([
+      "/api/v1/images/image%2F1/feedback",
+      expect.objectContaining({
+        method: "DELETE",
+        credentials: "same-origin",
       }),
     ]);
   });

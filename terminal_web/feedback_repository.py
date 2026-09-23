@@ -97,6 +97,18 @@ class FeedbackRepository:
         self.session.flush()
         return feedback
 
+    def delete_for_user_image(
+        self,
+        user_id: uuid.UUID,
+        image_id: uuid.UUID,
+    ) -> bool:
+        feedback = self.get_for_user_image(user_id, image_id)
+        if feedback is None:
+            return False
+        self.session.delete(feedback)
+        self.session.flush()
+        return True
+
     def task_has_feedback(self, task_id: uuid.UUID) -> bool:
         statement = select(
             select(ImageFeedback.id)

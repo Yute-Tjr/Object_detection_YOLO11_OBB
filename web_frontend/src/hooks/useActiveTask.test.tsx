@@ -42,6 +42,7 @@ function fakeClient(getTask: ApiClient["getTask"]): ApiClient {
     deleteTask: vi.fn(),
     getImageFeedback: vi.fn(),
     updateImageFeedback: vi.fn(),
+    deleteImageFeedback: vi.fn(),
   };
 }
 

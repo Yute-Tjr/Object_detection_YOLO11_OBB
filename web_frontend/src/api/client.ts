@@ -153,6 +153,16 @@ export const apiClient = {
       signal,
     });
   },
+
+  deleteImageFeedback(
+    imageId: string,
+    signal?: AbortSignal,
+  ): Promise<ImageFeedbackView> {
+    return request(`/images/${encodeURIComponent(imageId)}/feedback`, {
+      method: "DELETE",
+      signal,
+    });
+  },
 };
 
 export type ApiClient = typeof apiClient;

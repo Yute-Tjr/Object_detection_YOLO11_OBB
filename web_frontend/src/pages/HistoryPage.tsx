@@ -83,6 +83,26 @@ export function HistoryPage({
     setPendingDeleteTask((current) => current?.id === selectedTaskId ? null : current);
   }, [selectedTaskId]);
 
+  const refreshAfterFeedbackDeleted = useCallback(async () => {
+    if (!selectedTaskId) return;
+    setError(null);
+    try {
+      const [page, refreshedTask] = await Promise.all([
+        client.listTasks({ status: "all", query: query || undefined, limit: 100 }),
+        client.getTask(selectedTaskId),
+      ]);
+      setTasks(page.items);
+      setSelectedTask((current) => current?.id === selectedTaskId
+        ? refreshedTask
+        : current);
+      setPendingDeleteTask((current) => current?.id === selectedTaskId
+        ? null
+        : current);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }, [client, query, selectedTaskId]);
+
   const changeImage = (index: number) => {
     setSelectedIndex(index);
     if (selectedTask) onRouteChange?.(selectedTask.id, selectedTask.images[index]?.id);
@@ -189,6 +209,7 @@ export function HistoryPage({
             onSelectedIndexChange={changeImage}
             feedbackClient={client}
             onFeedbackSaved={markFeedbackSaved}
+            onFeedbackDeleted={() => void refreshAfterFeedbackDeleted()}
           />
         </section>
       )}

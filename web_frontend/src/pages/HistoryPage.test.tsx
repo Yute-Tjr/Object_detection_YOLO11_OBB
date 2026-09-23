@@ -66,6 +66,7 @@ function client(overrides = {}) {
     deleteTask: vi.fn().mockResolvedValue(undefined),
     getImageFeedback: vi.fn(),
     updateImageFeedback: vi.fn(),
+    deleteImageFeedback: vi.fn(),
     ...overrides,
   };
 }
@@ -271,5 +272,81 @@ describe("HistoryPage", () => {
       "title",
       "包含人工反馈，已作为模型优化数据保留",
     );
+  });
+
+  it("refreshes authoritative task state and enables deletion after the last feedback is revoked", async () => {
+    const withFeedback = { ...detail, hasFeedback: true };
+    const withoutFeedback = { ...detail, hasFeedback: false };
+    const feedbackView = {
+      imageId: "ok-image",
+      originalFilename: "terminal-ok.png",
+      status: "succeeded" as const,
+      detections: [],
+      missedRegionCandidates: ["label1" as const],
+      feedback: {
+        id: "feedback-1",
+        items: [],
+        missedRegions: ["label1" as const],
+        createdAt: "2026-09-23T01:00:00Z",
+        updatedAt: "2026-09-23T01:00:00Z",
+      },
+    };
+    const api = client({
+      listTasks: vi.fn()
+        .mockResolvedValueOnce({ ...page, items: [withFeedback] })
+        .mockResolvedValue({ ...page, items: [withoutFeedback] }),
+      getTask: vi.fn()
+        .mockResolvedValueOnce(withFeedback)
+        .mockResolvedValue(withoutFeedback),
+      getImageFeedback: vi.fn().mockResolvedValue(feedbackView),
+      deleteImageFeedback: vi.fn().mockResolvedValue({ ...feedbackView, feedback: null }),
+    });
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} initialTaskId="task-id" initialImageId="ok-image" />);
+
+    expect(await screen.findByRole("button", { name: "删除 T20260920-0100" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "结果反馈" }));
+    await user.click(await screen.findByRole("button", { name: "撤销已提交反馈" }));
+    await user.click(screen.getByRole("button", { name: "确认撤销" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "删除 T20260920-0100" })).toBeEnabled();
+    });
+    expect(api.listTasks).toHaveBeenCalledTimes(2);
+    expect(api.getTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps deletion disabled when the server reports remaining task feedback", async () => {
+    const withFeedback = { ...detail, hasFeedback: true };
+    const feedbackView = {
+      imageId: "ok-image",
+      originalFilename: "terminal-ok.png",
+      status: "succeeded" as const,
+      detections: [],
+      missedRegionCandidates: ["label1" as const],
+      feedback: {
+        id: "feedback-1",
+        items: [],
+        missedRegions: ["label1" as const],
+        createdAt: "2026-09-23T01:00:00Z",
+        updatedAt: "2026-09-23T01:00:00Z",
+      },
+    };
+    const api = client({
+      listTasks: vi.fn().mockResolvedValue({ ...page, items: [withFeedback] }),
+      getTask: vi.fn().mockResolvedValue(withFeedback),
+      getImageFeedback: vi.fn().mockResolvedValue(feedbackView),
+      deleteImageFeedback: vi.fn().mockResolvedValue({ ...feedbackView, feedback: null }),
+    });
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} initialTaskId="task-id" initialImageId="ok-image" />);
+
+    await user.click(await screen.findByRole("button", { name: "结果反馈" }));
+    await user.click(await screen.findByRole("button", { name: "撤销已提交反馈" }));
+    await user.click(screen.getByRole("button", { name: "确认撤销" }));
+
+    await waitFor(() => expect(api.listTasks).toHaveBeenCalledTimes(2));
+    expect(api.getTask).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "删除 T20260920-0100" })).toBeDisabled();
   });
 });

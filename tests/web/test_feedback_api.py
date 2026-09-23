@@ -18,6 +18,7 @@ from terminal_web.models import (
     Detection,
     ImageFeedback,
     ImageFeedbackItem,
+    ImageFeedbackMiss,
     InspectionImage,
     InspectionTask,
 )
@@ -284,6 +285,95 @@ class FeedbackApiTest(unittest.TestCase):
                 session.scalar(select(func.count()).select_from(ImageFeedback)),
                 2,
             )
+
+    def test_delete_feedback_removes_feedback_children_but_keeps_detection_data(self):
+        saved = self.put(self.image_id, self.valid_payload())
+        self.assertEqual(saved.status_code, 200, saved.text)
+
+        response = self.client.delete(
+            f"/api/v1/images/{self.image_id}/feedback"
+        )
+
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIsNone(response.json()["feedback"])
+        with self.session_factory() as session:
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(ImageFeedback)), 0
+            )
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(ImageFeedbackItem)),
+                0,
+            )
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(ImageFeedbackMiss)),
+                0,
+            )
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(InspectionImage)), 1
+            )
+            self.assertEqual(
+                session.scalar(select(func.count()).select_from(Detection)), 3
+            )
+
+    def test_delete_feedback_is_idempotent(self):
+        self.assertEqual(
+            self.put(self.image_id, self.valid_payload()).status_code,
+            200,
+        )
+
+        first = self.client.delete(f"/api/v1/images/{self.image_id}/feedback")
+        second = self.client.delete(f"/api/v1/images/{self.image_id}/feedback")
+
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertIsNone(second.json()["feedback"])
+
+    def test_delete_feedback_is_user_scoped_and_last_feedback_allows_task_deletion(self):
+        self.assertEqual(
+            self.put(self.image_id, self.valid_payload()).status_code,
+            200,
+        )
+        with self.session_factory() as session:
+            task_id = session.get(
+                InspectionImage, uuid.UUID(self.image_id)
+            ).task_id
+
+        second_client = TestClient(self.app)
+        try:
+            create_and_login(second_client, self.session_factory, username="reviewer-two")
+            saved = second_client.put(
+                f"/api/v1/images/{self.image_id}/feedback",
+                json=self.valid_payload(verdict="NG"),
+            )
+            self.assertEqual(saved.status_code, 200, saved.text)
+
+            removed = second_client.delete(
+                f"/api/v1/images/{self.image_id}/feedback"
+            )
+            self.assertEqual(removed.status_code, 200, removed.text)
+            self.assertIsNone(removed.json()["feedback"])
+        finally:
+            second_client.close()
+
+        own_feedback = self.client.get(
+            f"/api/v1/images/{self.image_id}/feedback"
+        )
+        task_with_feedback = self.client.get(f"/api/v1/tasks/{task_id}")
+        self.assertIsNotNone(own_feedback.json()["feedback"])
+        self.assertTrue(task_with_feedback.json()["hasFeedback"])
+
+        self.assertEqual(
+            self.client.delete(
+                f"/api/v1/images/{self.image_id}/feedback"
+            ).status_code,
+            200,
+        )
+        task_without_feedback = self.client.get(f"/api/v1/tasks/{task_id}")
+        self.assertFalse(task_without_feedback.json()["hasFeedback"])
+        self.assertEqual(
+            self.client.delete(f"/api/v1/tasks/{task_id}").status_code,
+            204,
+        )
 
     def test_detection_ids_must_be_unique_and_belong_to_current_image(self):
         duplicate = self.valid_payload()

@@ -162,3 +162,16 @@ def update_feedback(
     repository.session.commit()
     feedback = feedback_repository.get_for_user_image(user.id, image.id)
     return _feedback_view(image, feedback)
+
+
+@router.delete("/{image_id}/feedback", response_model=ImageFeedbackView)
+def delete_feedback(
+    image_id: uuid.UUID,
+    user: CurrentUser,
+    repository: Annotated[TaskRepository, Depends(get_repository)],
+) -> ImageFeedbackView:
+    image = _load_image(image_id, repository)
+    feedback_repository = FeedbackRepository(repository.session)
+    feedback_repository.delete_for_user_image(user.id, image.id)
+    repository.session.commit()
+    return _feedback_view(image, None)

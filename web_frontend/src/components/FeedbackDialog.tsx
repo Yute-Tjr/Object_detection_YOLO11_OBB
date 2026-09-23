@@ -1,4 +1,4 @@
-import { WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, Warning, WarningCircle, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiClient, type ApiClient } from "../api/client";
@@ -11,7 +11,10 @@ import type {
 } from "../api/types";
 
 
-export type FeedbackClient = Pick<ApiClient, "getImageFeedback" | "updateImageFeedback">;
+export type FeedbackClient = Pick<
+  ApiClient,
+  "getImageFeedback" | "updateImageFeedback" | "deleteImageFeedback"
+>;
 
 interface FeedbackDialogProps {
   imageId: string;
@@ -19,6 +22,7 @@ interface FeedbackDialogProps {
   client?: FeedbackClient;
   onClose: () => void;
   onSaved: (feedback: ImageFeedbackView) => void;
+  onDeleted?: (feedback: ImageFeedbackView) => void;
 }
 
 interface DraftItem {
@@ -89,14 +93,18 @@ export function FeedbackDialog({
   client = apiClient,
   onClose,
   onSaved,
+  onDeleted,
 }: FeedbackDialogProps) {
   const [view, setView] = useState<ImageFeedbackView | null>(null);
   const [draft, setDraft] = useState<FeedbackDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const closeTimer = useRef<number | null>(null);
+  const revokeCancelRef = useRef<HTMLButtonElement>(null);
 
   const load = useCallback((signal?: AbortSignal) => {
     setLoading(true);
@@ -120,11 +128,20 @@ export function FeedbackDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !submitting) onClose();
+      if (event.key !== "Escape") return;
+      if (confirmingDelete && !deleting) {
+        setConfirmingDelete(false);
+        return;
+      }
+      if (!submitting && !deleting) onClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose, submitting]);
+  }, [confirmingDelete, deleting, onClose, submitting]);
+
+  useEffect(() => {
+    if (confirmingDelete) revokeCancelRef.current?.focus();
+  }, [confirmingDelete]);
 
   useEffect(() => () => {
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
@@ -135,22 +152,20 @@ export function FeedbackDialog({
       ...current,
       items: {
         ...current.items,
-        [detectionId]: { ...current.items[detectionId], ...update },
+        [detectionId]: { ...current.items[detectionId], manual: true, ...update },
       },
     } : current);
     setError(null);
   };
 
-  const toggleManual = (detectionId: string) => {
+  const restoreModelResult = (detectionId: string) => {
     setDraft((current) => {
       if (!current) return current;
-      const item = current.items[detectionId] ?? { manual: false };
-      const manual = !item.manual;
       return {
         ...current,
         items: {
           ...current.items,
-          [detectionId]: manual ? { ...item, manual } : { manual },
+          [detectionId]: { manual: false },
         },
       };
     });
@@ -169,7 +184,7 @@ export function FeedbackDialog({
   };
 
   const submit = async () => {
-    if (!view || !draft || submitting) return;
+    if (!view || !draft || submitting || deleting) return;
     const orderedDetections = [...view.detections].sort((left, right) => (
       compareRegions(left.logicalRegion, right.logicalRegion)
     ));
@@ -227,11 +242,35 @@ export function FeedbackDialog({
     }
   };
 
+  const deleteFeedback = async () => {
+    if (!view?.feedback || deleting || submitting) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const updated = await client.deleteImageFeedback(imageId);
+      setView(updated);
+      setDraft(draftFromView(updated));
+      setSaved(false);
+      setConfirmingDelete(false);
+      onDeleted?.(updated);
+    } catch (caught) {
+      setConfirmingDelete(false);
+      setError(caught instanceof Error ? caught.message : "反馈撤销失败");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div
       className="feedback-dialog-backdrop"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !submitting) onClose();
+        if (
+          event.target === event.currentTarget
+          && !submitting
+          && !deleting
+          && !confirmingDelete
+        ) onClose();
       }}
     >
       <section className="feedback-dialog" role="dialog" aria-modal="true" aria-labelledby="feedback-dialog-title">
@@ -240,7 +279,7 @@ export function FeedbackDialog({
             <h2 id="feedback-dialog-title">检测结果反馈</h2>
             <p title={filename}>{filename}</p>
           </div>
-          <button type="button" aria-label="关闭反馈" disabled={submitting} onClick={onClose}>
+          <button type="button" aria-label="关闭反馈" disabled={submitting || deleting} onClick={onClose}>
             <X size={20} />
           </button>
         </header>
@@ -260,7 +299,7 @@ export function FeedbackDialog({
             <>
               <div className="feedback-dialog__section-heading">
                 <h3>已检测区域</h3>
-                <span>只需选择需要纠正的区域，未选择项沿用原结果</span>
+                <span>点击 OK、NG 或颜色即记录为人工反馈，未选择项沿用原结果</span>
               </div>
               {view.detections.length ? (
                 <div className="feedback-regions">
@@ -277,52 +316,53 @@ export function FeedbackDialog({
                               <span>实际检测：{detection.regionLabel}</span>
                             ) : null}
                           </div>
-                          <label className="feedback-manual-toggle">
-                            <input
-                              type="checkbox"
-                              aria-label={`${detection.logicalRegion} 人工反馈`}
-                              checked={item.manual}
-                              onChange={() => toggleManual(detection.detectionId)}
-                            />
-                            <span>人工反馈</span>
-                          </label>
                         </div>
-                        {item.manual ? (
-                          <>
-                            <fieldset aria-label={`${detection.logicalRegion} 判定`}>
-                              <legend>实际结果</legend>
-                              {(["OK", "NG"] as FeedbackVerdict[]).map((verdict) => (
-                                <label key={verdict} className={`feedback-choice feedback-choice--${verdict.toLowerCase()}`}>
+                        <div className="feedback-region__controls">
+                          <fieldset aria-label={`${detection.logicalRegion} 判定`}>
+                            <legend>实际结果</legend>
+                            {(["OK", "NG"] as FeedbackVerdict[]).map((verdict) => (
+                              <label key={verdict} className={`feedback-choice feedback-choice--${verdict.toLowerCase()}`}>
+                                <input
+                                  type="radio"
+                                  name={`verdict-${detection.detectionId}`}
+                                  aria-label={`${detection.logicalRegion} ${verdict}`}
+                                  checked={item.verdict === verdict}
+                                  onChange={() => setItem(detection.detectionId, { verdict })}
+                                />
+                                {verdict}
+                              </label>
+                            ))}
+                          </fieldset>
+                          {detection.logicalRegion === "label1" ? (
+                            <fieldset aria-label="label1 颜色">
+                              <legend>实际颜色</legend>
+                              {COLORS.map((color) => (
+                                <label key={color} className="feedback-choice">
                                   <input
                                     type="radio"
-                                    name={`verdict-${detection.detectionId}`}
-                                    aria-label={`${detection.logicalRegion} ${verdict}`}
-                                    checked={item.verdict === verdict}
-                                    onChange={() => setItem(detection.detectionId, { verdict })}
+                                    name={`color-${detection.detectionId}`}
+                                    aria-label={`label1 颜色 ${color}`}
+                                    checked={item.color === color}
+                                    onChange={() => setItem(detection.detectionId, { color })}
                                   />
-                                  {verdict}
+                                  {color}
                                 </label>
                               ))}
                             </fieldset>
-                            {detection.logicalRegion === "label1" ? (
-                              <fieldset aria-label="label1 颜色">
-                                <legend>实际颜色</legend>
-                                {COLORS.map((color) => (
-                                  <label key={color} className="feedback-choice">
-                                    <input
-                                      type="radio"
-                                      name={`color-${detection.detectionId}`}
-                                      aria-label={`label1 颜色 ${color}`}
-                                      checked={item.color === color}
-                                      onChange={() => setItem(detection.detectionId, { color })}
-                                    />
-                                    {color}
-                                  </label>
-                                ))}
-                              </fieldset>
-                            ) : null}
-                          </>
-                        ) : <p className="feedback-region__baseline">{baselineText(detection)}</p>}
+                          ) : null}
+                        </div>
+                        <div className="feedback-region__status">
+                          {item.manual ? (
+                            <button
+                              type="button"
+                              className="feedback-restore-button"
+                              aria-label={`${detection.logicalRegion} 恢复模型结果`}
+                              onClick={() => restoreModelResult(detection.detectionId)}
+                            >
+                              恢复模型结果
+                            </button>
+                          ) : <p className="feedback-region__baseline">{baselineText(detection)}</p>}
+                        </div>
                       </article>
                     );
                   })}
@@ -359,11 +399,70 @@ export function FeedbackDialog({
 
         {view && draft ? (
           <footer className="feedback-dialog__actions">
-            <button className="button button--secondary" type="button" disabled={submitting} onClick={onClose}>取消</button>
-            <button className="button button--primary" type="button" disabled={submitting || saved} onClick={() => void submit()}>
+            {view.feedback ? (
+              <button
+                className="feedback-revoke-trigger"
+                type="button"
+                disabled={submitting || deleting}
+                onClick={() => {
+                  setError(null);
+                  setConfirmingDelete(true);
+                }}
+              >
+                <ArrowCounterClockwise size={17} />撤销已提交反馈
+              </button>
+            ) : null}
+            <button className="button button--secondary" type="button" disabled={submitting || deleting} onClick={onClose}>取消</button>
+            <button className="button button--primary" type="button" disabled={submitting || deleting || saved} onClick={() => void submit()}>
               {submitting ? "正在提交…" : saved ? "已保存" : "提交反馈"}
             </button>
           </footer>
+        ) : null}
+
+        {confirmingDelete ? (
+          <div
+            className="feedback-revoke-layer"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget && !deleting) {
+                setConfirmingDelete(false);
+              }
+            }}
+          >
+            <section
+              className="feedback-revoke-card"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="feedback-revoke-title"
+              aria-describedby="feedback-revoke-description"
+            >
+              <span className="feedback-revoke-card__icon" aria-hidden="true">
+                <Warning size={24} weight="fill" />
+              </span>
+              <div>
+                <h3 id="feedback-revoke-title">撤销已提交反馈？</h3>
+                <p id="feedback-revoke-description">将永久删除你对这张图片提交的反馈，检测结果不会被删除。</p>
+              </div>
+              <div className="feedback-revoke-card__actions">
+                <button
+                  ref={revokeCancelRef}
+                  type="button"
+                  className="button button--secondary"
+                  disabled={deleting}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="button feedback-revoke-card__confirm"
+                  disabled={deleting}
+                  onClick={() => void deleteFeedback()}
+                >
+                  {deleting ? "正在撤销…" : "确认撤销"}
+                </button>
+              </div>
+            </section>
+          </div>
         ) : null}
       </section>
     </div>

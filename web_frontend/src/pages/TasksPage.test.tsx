@@ -58,6 +58,7 @@ function fakeClient(overrides = {}) {
     deleteTask: vi.fn(),
     getImageFeedback: vi.fn(),
     updateImageFeedback: vi.fn(),
+    deleteImageFeedback: vi.fn(),
     ...overrides,
   };
 }
