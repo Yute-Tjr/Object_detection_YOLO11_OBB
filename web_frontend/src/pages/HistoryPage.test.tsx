@@ -234,4 +234,42 @@ describe("HistoryPage", () => {
     expect(screen.queryByRole("dialog", { name: "确认删除任务" })).not.toBeInTheDocument();
     expect(api.deleteTask).not.toHaveBeenCalled();
   });
+
+  it("disables task deletion immediately after feedback is saved", async () => {
+    const feedbackView = {
+      imageId: "ok-image",
+      originalFilename: "terminal-ok.png",
+      status: "succeeded" as const,
+      detections: [],
+      missedRegionCandidates: ["label1" as const],
+      feedback: null,
+    };
+    const api = client({
+      getImageFeedback: vi.fn().mockResolvedValue(feedbackView),
+      updateImageFeedback: vi.fn().mockResolvedValue({
+        ...feedbackView,
+        feedback: {
+          id: "feedback-1",
+          items: [],
+          missedRegions: ["label1"],
+          createdAt: "2026-09-23T01:00:00Z",
+          updatedAt: "2026-09-23T01:00:00Z",
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} initialTaskId="task-id" initialImageId="ok-image" />);
+
+    await user.click(await screen.findByRole("button", { name: "结果反馈" }));
+    await user.click(await screen.findByRole("checkbox", { name: "label1 漏检" }));
+    await user.click(screen.getByRole("button", { name: "提交反馈" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "删除 T20260920-0100" })).toBeDisabled();
+    });
+    expect(screen.getByRole("button", { name: "删除 T20260920-0100" })).toHaveAttribute(
+      "title",
+      "包含人工反馈，已作为模型优化数据保留",
+    );
+  });
 });

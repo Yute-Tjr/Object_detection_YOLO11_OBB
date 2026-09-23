@@ -10,6 +10,7 @@ interface ImageComparisonProps {
   selectedIndex: number;
   onSelectedIndexChange: (index: number) => void;
   feedbackClient?: FeedbackClient;
+  onFeedbackSaved?: (imageId: string) => void;
 }
 
 
@@ -26,6 +27,7 @@ export function ImageComparison({
   selectedIndex,
   onSelectedIndexChange,
   feedbackClient,
+  onFeedbackSaved,
 }: ImageComparisonProps) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const image = images[selectedIndex];
@@ -107,7 +109,7 @@ export function ImageComparison({
           filename={image.originalFilename}
           client={feedbackClient}
           onClose={() => setFeedbackOpen(false)}
-          onSaved={() => undefined}
+          onSaved={() => onFeedbackSaved?.(image.id)}
         />
       ) : null}
     </>

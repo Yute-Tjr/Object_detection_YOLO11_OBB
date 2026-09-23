@@ -70,6 +70,18 @@ export function HistoryPage({
   }, [initialImageId, initialTaskId, openTask]);
 
   const selectedImage = selectedTask?.images[selectedIndex];
+  const selectedTaskId = selectedTask?.id;
+
+  const markFeedbackSaved = useCallback(() => {
+    if (!selectedTaskId) return;
+    setSelectedTask((current) => current?.id === selectedTaskId
+      ? { ...current, hasFeedback: true }
+      : current);
+    setTasks((current) => current.map((task) => task.id === selectedTaskId
+      ? { ...task, hasFeedback: true }
+      : task));
+    setPendingDeleteTask((current) => current?.id === selectedTaskId ? null : current);
+  }, [selectedTaskId]);
 
   const changeImage = (index: number) => {
     setSelectedIndex(index);
@@ -176,6 +188,7 @@ export function HistoryPage({
             selectedIndex={selectedIndex}
             onSelectedIndexChange={changeImage}
             feedbackClient={client}
+            onFeedbackSaved={markFeedbackSaved}
           />
         </section>
       )}
