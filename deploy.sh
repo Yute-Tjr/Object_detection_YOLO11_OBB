@@ -19,6 +19,10 @@ DOMESTIC_MIRROR_ACTIVE=false
 CREATE_APP_USER=false
 APP_USER_USERNAME=""
 APP_USER_PASSWORD=""
+DEFAULT_PYTHON_BASE_IMAGE=${PYTHON_BASE_IMAGE:-python:3.11-slim}
+DEFAULT_NODE_BASE_IMAGE=${NODE_BASE_IMAGE:-node:22-alpine}
+DEFAULT_NGINX_BASE_IMAGE=${NGINX_BASE_IMAGE:-nginx:1.27-alpine}
+DEFAULT_POSTGRES_BASE_IMAGE=${POSTGRES_BASE_IMAGE:-postgres:16-alpine}
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     BLUE=$'\033[34m'
@@ -696,12 +700,22 @@ log_since() {
 }
 
 
-docker_registry_unavailable_since() {
+image_registry_unavailable_since() {
     local previous_line_count=$1
     log_since "$previous_line_count" \
-        | grep -Eq '(auth\.docker\.io|registry-1\.docker\.io)' \
+        | grep -Eq '(auth\.docker\.io|registry-1\.docker\.io|m\.daocloud\.io|failed to (fetch anonymous token|authorize|resolve source metadata)|load metadata for)' \
         && log_since "$previous_line_count" \
             | grep -Eq '(DeadlineExceeded|i/o timeout|TLS handshake timeout|context deadline exceeded|connection reset by peer)'
+}
+
+
+reset_default_image_source() {
+    PYTHON_BASE_IMAGE=$DEFAULT_PYTHON_BASE_IMAGE
+    NODE_BASE_IMAGE=$DEFAULT_NODE_BASE_IMAGE
+    NGINX_BASE_IMAGE=$DEFAULT_NGINX_BASE_IMAGE
+    POSTGRES_BASE_IMAGE=$DEFAULT_POSTGRES_BASE_IMAGE
+    export PYTHON_BASE_IMAGE NODE_BASE_IMAGE NGINX_BASE_IMAGE POSTGRES_BASE_IMAGE
+    DOMESTIC_MIRROR_ACTIVE=false
 }
 
 
@@ -712,9 +726,7 @@ enable_domestic_image_source() {
     validate_docker_image_prefix "$prefix" \
         || fatal "国内镜像前缀无效：${prefix}。请使用不含协议的 registry/路径格式。"
 
-    warning "Docker Hub 与本地基础镜像缓存均不可用。"
-    info "是否切换到国内镜像 ${prefix} 继续部署？"
-    prompt_yes_no "确认切换" "yes" || return 1
+    warning "Docker Hub 网络异常，切换到国内基础镜像源：${prefix}。"
 
     PYTHON_BASE_IMAGE="${prefix}/library/python:3.11-slim"
     NODE_BASE_IMAGE="${prefix}/library/node:22-alpine"
@@ -740,6 +752,7 @@ run_logged_step() {
         success "$label 完成"
     else
         local status=$?
+        local mirror_log_line_count=$log_line_count
         if [[ "$label" == "构建服务镜像" ]] \
             && log_since "$log_line_count" | grep -Fq 'x-docker-expose-session-sharedkey' \
             && log_since "$log_line_count" | grep -Fq 'non-printable ASCII characters'; then
@@ -752,15 +765,10 @@ run_logged_step() {
             fi
         fi
         if [[ "$label" == "构建服务镜像" ]] \
-            && docker_registry_unavailable_since "$log_line_count"; then
-            warning "检测到 Docker Hub 网络异常，改用本地基础镜像缓存重新构建。"
-            if execute_logged_command "$with_progress" build_service_images cached; then
-                success "$label 完成（使用本地基础镜像缓存）"
-                return 0
-            else
-                status=$?
-            fi
-            if enable_domestic_image_source; then
+            && image_registry_unavailable_since "$log_line_count"; then
+            if [[ "$DOMESTIC_MIRROR_ACTIVE" != "true" ]]; then
+                enable_domestic_image_source
+                mirror_log_line_count=$(wc -l < "$LOG_FILE")
                 if execute_logged_command "$with_progress" build_service_images mirror; then
                     success "$label 完成（使用国内基础镜像源）"
                     return 0
@@ -768,16 +776,38 @@ run_logged_step() {
                     status=$?
                 fi
             fi
+            if image_registry_unavailable_since "$mirror_log_line_count"; then
+                warning "国内镜像网络异常，改用本地基础镜像缓存。"
+                reset_default_image_source
+                if execute_logged_command "$with_progress" build_service_images cached; then
+                    success "$label 完成（使用本地基础镜像缓存）"
+                    return 0
+                else
+                    status=$?
+                fi
+            fi
         fi
-        if [[ "$label" == "启动 PostgreSQL" \
-            && "$DOMESTIC_MIRROR_ACTIVE" != "true" ]] \
-            && docker_registry_unavailable_since "$log_line_count" \
-            && enable_domestic_image_source; then
-            if execute_logged_command "$with_progress" "$@"; then
-                success "$label 完成（使用国内基础镜像源）"
-                return 0
-            else
-                status=$?
+        if [[ "$label" == "启动 PostgreSQL" ]] \
+            && image_registry_unavailable_since "$log_line_count"; then
+            if [[ "$DOMESTIC_MIRROR_ACTIVE" != "true" ]]; then
+                enable_domestic_image_source
+                mirror_log_line_count=$(wc -l < "$LOG_FILE")
+                if execute_logged_command "$with_progress" start_postgres pull; then
+                    success "$label 完成（使用国内基础镜像源）"
+                    return 0
+                else
+                    status=$?
+                fi
+            fi
+            if image_registry_unavailable_since "$mirror_log_line_count"; then
+                warning "国内镜像网络异常，改用本地 PostgreSQL 镜像缓存。"
+                reset_default_image_source
+                if execute_logged_command "$with_progress" start_postgres cached; then
+                    success "$label 完成（使用本地基础镜像缓存）"
+                    return 0
+                else
+                    status=$?
+                fi
             fi
         fi
         warning "详细错误日志：$LOG_FILE"
@@ -804,6 +834,16 @@ build_service_images() {
     compose build api || return $?
     compose build worker || return $?
     compose build frontend
+}
+
+
+start_postgres() {
+    local mode=${1:-pull}
+    if [[ "$mode" == "cached" ]]; then
+        compose up -d --pull never postgres
+    else
+        compose up -d postgres
+    fi
 }
 
 
@@ -935,7 +975,7 @@ run_deployment() {
     run_logged_step "05/10" "验证 Compose 配置" compose config --quiet
 
     if [[ "$DEPLOYMENT_MODE" == "update" ]]; then
-        run_logged_step "06/10" "启动 PostgreSQL" compose up -d postgres
+        run_logged_step "06/10" "启动 PostgreSQL" start_postgres
         section "06/10" "等待 PostgreSQL 健康"
         wait_for_service_health postgres 180 || fatal "PostgreSQL 未能进入健康状态。"
         success "PostgreSQL 已就绪"
@@ -955,7 +995,7 @@ run_deployment() {
     fi
 
     if [[ "$DEPLOYMENT_MODE" != "update" ]]; then
-        run_logged_step "08/10" "启动 PostgreSQL" compose up -d postgres
+        run_logged_step "08/10" "启动 PostgreSQL" start_postgres
         section "08/10" "等待 PostgreSQL 健康"
         wait_for_service_health postgres 180 || fatal "PostgreSQL 未能进入健康状态。"
         success "PostgreSQL 已就绪"

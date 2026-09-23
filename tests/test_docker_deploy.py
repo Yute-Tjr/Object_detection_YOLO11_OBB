@@ -59,6 +59,10 @@ printf '%s|%s|%s|%s\\n' \
     "${NODE_BASE_IMAGE:-}" \
     "${NGINX_BASE_IMAGE:-}" \
     "${POSTGRES_BASE_IMAGE:-}" >> "${FAKE_DOCKER_IMAGE_LOG}"
+printf '%s|%s|%s\\n' \
+    "${PYTHON_BASE_IMAGE:-python:3.11-slim}" \
+    "${POSTGRES_BASE_IMAGE:-postgres:16-alpine}" \
+    "$*" >> "${FAKE_DOCKER_ATTEMPT_LOG}"
 if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_TRANSIENT:-false}" == "true" ]]; then
     if [[ ! -e "${FAKE_BUILD_MARKER}" ]]; then
         : > "${FAKE_BUILD_MARKER}"
@@ -66,18 +70,25 @@ if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_TRANSIENT:-false}" == "t
         exit 1
     fi
 fi
-if [[ " $* " == *" build --pull api "* && "${FAKE_REGISTRY_TIMEOUT:-false}" == "true" ]]; then
+if [[ " $* " == *" build --pull api "* \
+    && "${FAKE_REGISTRY_TIMEOUT:-false}" == "true" \
+    && "${PYTHON_BASE_IMAGE:-}" != *"m.daocloud.io/"* ]]; then
     echo 'failed to authorize: DeadlineExceeded: failed to fetch anonymous token: Get "https://auth.docker.io/token": dial tcp 203.0.113.10:443: i/o timeout' >&2
     exit 1
 fi
-if [[ " $* " == *" build --pull api "* && "${FAKE_REGISTRY_RESET:-false}" == "true" ]]; then
+if [[ " $* " == *" build --pull api "* \
+    && "${FAKE_REGISTRY_RESET:-false}" == "true" \
+    && "${PYTHON_BASE_IMAGE:-}" != *"m.daocloud.io/"* ]]; then
     echo 'failed to authorize: failed to fetch anonymous token: Get "https://auth.docker.io/token": read tcp 192.168.3.29:57585->172.64.144.78:443: read: connection reset by peer' >&2
     exit 1
 fi
-if [[ "${FAKE_REGISTRY_AND_CACHE_UNAVAILABLE:-false}" == "true" \
-    && ( " $* " == *" build --pull api "* || " $* " == *" build api "* ) \
-    && "${PYTHON_BASE_IMAGE:-}" != *"m.daocloud.io/docker.io/library/python:3.11-slim" ]]; then
-    echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
+if [[ "${FAKE_HUB_AND_MIRROR_UNAVAILABLE:-false}" == "true" \
+    && " $* " == *" build --pull api "* ]]; then
+    if [[ "${PYTHON_BASE_IMAGE:-}" == *"m.daocloud.io/"* ]]; then
+        echo 'failed to resolve source metadata for m.daocloud.io/docker.io/library/python:3.11-slim: i/o timeout' >&2
+    else
+        echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
+    fi
     exit 1
 fi
 if [[ "${FAKE_POSTGRES_REGISTRY_UNAVAILABLE:-false}" == "true" \
@@ -85,6 +96,18 @@ if [[ "${FAKE_POSTGRES_REGISTRY_UNAVAILABLE:-false}" == "true" \
     && "${POSTGRES_BASE_IMAGE:-}" != *"m.daocloud.io/docker.io/library/postgres:16-alpine" ]]; then
     echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
     exit 1
+fi
+if [[ "${FAKE_POSTGRES_HUB_AND_MIRROR_UNAVAILABLE:-false}" == "true" \
+    && ( " $* " == *" up -d postgres "* || " $* " == *" up -d --pull never postgres "* ) ]]; then
+    if [[ " $* " == *" --pull never "* ]]; then
+        :
+    elif [[ "${POSTGRES_BASE_IMAGE:-}" == *"m.daocloud.io/"* ]]; then
+        echo 'failed to resolve source metadata for m.daocloud.io/docker.io/library/postgres:16-alpine: i/o timeout' >&2
+        exit 1
+    else
+        echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
+        exit 1
+    fi
 fi
 if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_ERROR:-false}" == "true" ]]; then
     echo 'Dockerfile parse error: unknown instruction' >&2
@@ -141,6 +164,7 @@ exit 0
             "FAKE_VOLUME_EXISTS": "true" if volume_exists else "false",
             "FAKE_DOCKER_LOG": str(root / "docker-commands.log"),
             "FAKE_DOCKER_IMAGE_LOG": str(root / "docker-images.log"),
+            "FAKE_DOCKER_ATTEMPT_LOG": str(root / "docker-attempts.log"),
             "FAKE_APP_USER_STDIN_LOG": str(root / "app-user-stdin.log"),
             "NO_COLOR": "1",
             "POSTGRES_DB": "terminal_inspection",
@@ -240,7 +264,7 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertEqual(commands.count(" build --pull frontend\n"), 1)
         self.assertIn("BuildKit 会话异常，自动重试一次", result.stdout)
 
-    def test_registry_timeout_falls_back_to_cached_base_images(self):
+    def test_registry_timeout_falls_back_to_domestic_images_before_cache(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             prepare_fake_project(project)
@@ -260,18 +284,20 @@ class DockerDeployScriptTest(unittest.TestCase):
             deploy_log = next((project / "deploy-logs").glob("deploy-*.log")).read_text(
                 encoding="utf-8"
             )
+            attempts = (project / "docker-attempts.log").read_text(encoding="utf-8")
 
         self.assertEqual(
             result.returncode,
             0,
             result.stdout + result.stderr + "\nCOMMANDS:\n" + commands + "\nLOG:\n" + deploy_log,
         )
-        self.assertEqual(commands.count(" build --pull api\n"), 1)
-        self.assertEqual(commands.count(" build api\n"), 1)
-        self.assertEqual(commands.count(" build worker\n"), 1)
-        self.assertEqual(commands.count(" build frontend\n"), 1)
-        self.assertNotIn(" build --pull worker\n", commands)
-        self.assertIn("Docker Hub 网络异常，改用本地基础镜像缓存", result.stdout)
+        self.assertEqual(commands.count(" build --pull api\n"), 2)
+        self.assertNotIn(" build api\n", commands)
+        self.assertIn(" build --pull worker\n", commands)
+        build_api_attempts = [line for line in attempts.splitlines() if " build --pull api" in line]
+        self.assertEqual(build_api_attempts[0].split("|", 1)[0], "python:3.11-slim")
+        self.assertTrue(build_api_attempts[1].startswith("m.daocloud.io/"))
+        self.assertIn("Docker Hub 网络异常，切换到国内基础镜像源", result.stdout)
 
     def test_non_network_build_error_does_not_fall_back_to_cache(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -296,7 +322,7 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertNotIn(" build api\n", commands)
         self.assertNotIn("改用本地基础镜像缓存", result.stdout + result.stderr)
 
-    def test_registry_connection_reset_falls_back_to_cached_base_images(self):
+    def test_registry_connection_reset_falls_back_to_domestic_images(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             prepare_fake_project(project)
@@ -315,19 +341,16 @@ class DockerDeployScriptTest(unittest.TestCase):
             commands = (project / "docker-commands.log").read_text(encoding="utf-8")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertEqual(commands.count(" build --pull api\n"), 1)
-        self.assertEqual(commands.count(" build api\n"), 1)
-        self.assertEqual(commands.count(" build worker\n"), 1)
-        self.assertEqual(commands.count(" build frontend\n"), 1)
-        self.assertNotIn(" build --pull worker\n", commands)
-        self.assertIn("改用本地基础镜像缓存", result.stdout)
+        self.assertEqual(commands.count(" build --pull api\n"), 2)
+        self.assertNotIn(" build api\n", commands)
+        self.assertIn("切换到国内基础镜像源", result.stdout)
 
-    def test_registry_and_cache_failure_falls_back_to_domestic_images(self):
+    def test_hub_and_domestic_failure_falls_back_to_default_local_cache(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             prepare_fake_project(project)
             env = fake_docker_environment(project, volume_exists=False)
-            env["FAKE_REGISTRY_AND_CACHE_UNAVAILABLE"] = "true"
+            env["FAKE_HUB_AND_MIRROR_UNAVAILABLE"] = "true"
 
             result = subprocess.run(
                 [str(SCRIPT), "--yes", "--no-pull"],
@@ -342,14 +365,24 @@ class DockerDeployScriptTest(unittest.TestCase):
             image_environments = (project / "docker-images.log").read_text(
                 encoding="utf-8"
             )
+            attempts = (project / "docker-attempts.log").read_text(encoding="utf-8")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(commands.count(" build --pull api\n"), 2)
         self.assertEqual(commands.count(" build api\n"), 1)
-        self.assertIn("build --pull worker", commands)
-        self.assertIn("build --pull frontend", commands)
-        self.assertIn("是否切换到国内镜像", result.stdout)
+        self.assertIn("build worker", commands)
+        self.assertIn("build frontend", commands)
         self.assertIn("已切换到国内基础镜像源", result.stdout)
+        self.assertIn("国内镜像网络异常，改用本地基础镜像缓存", result.stdout)
+        build_api_attempts = [line for line in attempts.splitlines() if " build" in line and " api" in line]
+        self.assertEqual(
+            [line.split("|", 1)[0] for line in build_api_attempts],
+            [
+                "python:3.11-slim",
+                "m.daocloud.io/docker.io/library/python:3.11-slim",
+                "python:3.11-slim",
+            ],
+        )
         self.assertIn(
             "m.daocloud.io/docker.io/library/python:3.11-slim"
             "|m.daocloud.io/docker.io/library/node:22-alpine"
@@ -386,6 +419,36 @@ class DockerDeployScriptTest(unittest.TestCase):
             "m.daocloud.io/docker.io/library/postgres:16-alpine",
             image_environments,
         )
+
+    def test_postgres_hub_and_domestic_failure_falls_back_to_local_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_POSTGRES_HUB_AND_MIRROR_UNAVAILABLE"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            attempts = (project / "docker-attempts.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        postgres_attempts = [
+            line for line in attempts.splitlines()
+            if " up -d" in line.split("|", 2)[2]
+            and line.split("|", 2)[2].endswith("postgres")
+        ]
+        self.assertEqual(len(postgres_attempts), 3)
+        self.assertEqual(postgres_attempts[0].split("|")[1], "postgres:16-alpine")
+        self.assertIn("m.daocloud.io/", postgres_attempts[1].split("|")[1])
+        self.assertEqual(postgres_attempts[2].split("|")[1], "postgres:16-alpine")
+        self.assertIn("--pull never postgres", postgres_attempts[2])
 
     def test_domestic_mirror_prefix_can_be_overridden(self):
         command = """
