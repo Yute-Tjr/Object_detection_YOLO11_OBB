@@ -21,6 +21,10 @@ export interface AuthUser {
   username: string;
 }
 
+export type FeedbackVerdict = "OK" | "NG";
+export type FeedbackColor = "B" | "G" | "R" | "W";
+export type LogicalRegion = "label1" | "label2" | "label3" | "label4" | "label5" | "label6";
+
 export interface HealthResponse {
   apiReady: boolean;
   databaseReady: boolean;
@@ -44,6 +48,48 @@ export interface DetectionResult {
   cropUrl?: string | null;
   anomaly?: ClassificationResult | null;
   color?: ClassificationResult | null;
+}
+
+export interface FeedbackDetection {
+  detectionId: string;
+  regionLabel: string;
+  logicalRegion: LogicalRegion;
+  anomaly?: ClassificationResult | null;
+  color?: ClassificationResult | null;
+}
+
+export interface FeedbackItem {
+  detectionId: string;
+  regionLabel: string;
+  logicalRegion: LogicalRegion;
+  verdict: FeedbackVerdict;
+  color?: FeedbackColor | null;
+}
+
+export interface FeedbackRecord {
+  id: string;
+  items: FeedbackItem[];
+  missedRegions: LogicalRegion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImageFeedbackView {
+  imageId: string;
+  originalFilename: string;
+  status: ImageStatus;
+  detections: FeedbackDetection[];
+  missedRegionCandidates: LogicalRegion[];
+  feedback?: FeedbackRecord | null;
+}
+
+export interface FeedbackUpdateRequest {
+  items: Array<{
+    detectionId: string;
+    verdict: FeedbackVerdict;
+    color?: FeedbackColor;
+  }>;
+  missedRegions: LogicalRegion[];
 }
 
 export interface ImageSummary {

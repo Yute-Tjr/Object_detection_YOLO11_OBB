@@ -1,7 +1,9 @@
 import type {
   AuthUser,
   HealthResponse,
+  FeedbackUpdateRequest,
   ImageDetail,
+  ImageFeedbackView,
   ImagePage,
   ImageSummary,
   ListTaskParams,
@@ -131,6 +133,23 @@ export const apiClient = {
   retryImage(imageId: string, signal?: AbortSignal): Promise<ImageSummary> {
     return request(`/images/${encodeURIComponent(imageId)}/retry`, {
       method: "POST",
+      signal,
+    });
+  },
+
+  getImageFeedback(imageId: string, signal?: AbortSignal): Promise<ImageFeedbackView> {
+    return request(`/images/${encodeURIComponent(imageId)}/feedback`, { signal });
+  },
+
+  updateImageFeedback(
+    imageId: string,
+    payload: FeedbackUpdateRequest,
+    signal?: AbortSignal,
+  ): Promise<ImageFeedbackView> {
+    return request(`/images/${encodeURIComponent(imageId)}/feedback`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
       signal,
     });
   },

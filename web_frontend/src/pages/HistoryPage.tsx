@@ -175,6 +175,7 @@ export function HistoryPage({
             images={selectedTask.images}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={changeImage}
+            feedbackClient={client}
           />
         </section>
       )}

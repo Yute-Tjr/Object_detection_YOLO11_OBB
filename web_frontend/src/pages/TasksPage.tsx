@@ -92,6 +92,7 @@ export function TasksPage({ client = apiClient, initialTask = null }: TasksPageP
             images={task.images}
             selectedIndex={selectedIndex}
             onSelectedIndexChange={setSelectedIndex}
+            feedbackClient={client}
           />
         </>
       )}

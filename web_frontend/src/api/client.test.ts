@@ -129,4 +129,41 @@ describe("apiClient", () => {
       }),
     );
   });
+
+  it("loads and updates the selected image feedback", async () => {
+    const feedback = {
+      imageId: "image-1",
+      originalFilename: "terminal.png",
+      status: "succeeded",
+      detections: [],
+      missedRegionCandidates: ["label6"],
+      feedback: null,
+    };
+    const fetchMock = vi.fn().mockImplementation(async () => (
+      new Response(JSON.stringify(feedback), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await apiClient.getImageFeedback("image/1");
+    await apiClient.updateImageFeedback("image/1", {
+      items: [{ detectionId: "d1", verdict: "NG", color: "R" }],
+      missedRegions: ["label6"],
+    });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/v1/images/image%2F1/feedback");
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "/api/v1/images/image%2F1/feedback",
+      expect.objectContaining({
+        method: "PUT",
+        credentials: "same-origin",
+        body: JSON.stringify({
+          items: [{ detectionId: "d1", verdict: "NG", color: "R" }],
+          missedRegions: ["label6"],
+        }),
+      }),
+    ]);
+  });
 });
