@@ -36,18 +36,13 @@ test -s weights/classifiers/label5/resnet18_best.pt
 
 1. 检查 Docker、Docker Compose、权重和 GPU；
 2. 询问数据库名称、用户名，并隐藏输入和二次确认密码；
-3. 为设备、端口、输入尺寸和单任务图片数提供默认值；
-4. 生成权限为 `600` 的 `.env`；
-5. 构建镜像、初始化 PostgreSQL、执行迁移并启动服务；
-6. 等待 API、Worker 模型和前端健康检查通过。
+3. 询问首个网页登录用户名，并隐藏输入和二次确认密码；
+4. 为设备、端口和单任务图片数提供默认值；
+5. 生成权限为 `600` 的 `.env`；
+6. 构建镜像、初始化 PostgreSQL、执行迁移并启动服务；
+7. 自动创建首个登录用户，等待 API、Worker 模型和前端健康检查通过。
 
-向导不会自动创建默认账户。部署成功后，终端会显示首用户创建命令：
-
-```bash
-docker compose exec api python scripts/manage_users.py add USERNAME
-```
-
-密码在容器终端中隐藏输入并要求二次确认，不会写入 `.env`。用户名区分大小写，`Admin` 与 `admin` 是两个不同账户。其他管理命令：
+向导不会生成弱默认账户，而是使用本次输入的凭据创建首个用户。密码在终端中隐藏输入并要求二次确认，不会写入 `.env`、部署日志或 Docker 命令参数。用户名区分大小写，`Admin` 与 `admin` 是两个不同账户。更新部署默认不新增账户，交互模式可选择新增；已有用户改密仍使用管理命令：
 
 ```bash
 docker compose exec api python scripts/manage_users.py list
@@ -58,19 +53,28 @@ docker compose exec api python scripts/manage_users.py enable USERNAME
 
 重置密码或禁用用户会立即删除其现有会话。系统不提供网页注册；新增、启用、禁用和改密均由管理员执行。
 
-新建数据库密码至少 12 位，并限定为 URL 安全的字母、数字、点、下划线、波浪线和连字符；交互模式必须输入两次。脚本拒绝把 `.env.example` 的占位密码用于首次部署，也不会在摘要或日志中显示密码。若已有数据库仍使用旧的短密码，更新模式会保留原凭据并给出轮换提醒，因为只修改 `.env` 并不能修改数据库内部密码。查看执行计划但不写配置、不启动容器：
+数据库密码和网页登录密码最低均为 6 位，交互模式必须输入两次。数据库密码另外限定为 URL 安全的字母、数字、点、下划线、波浪线和连字符。脚本拒绝把 `.env.example` 的占位密码用于首次部署，也不会在摘要或日志中显示密码。查看执行计划但不写配置、不启动容器：
 
 ```bash
 ./deploy.sh --dry-run
 ```
 
-当 `.env` 和 `terminal-inspection_postgres-data` 数据卷同时存在时，脚本自动进入更新模式。更新默认复用数据库凭据，可选择使用 `git pull --ff-only` 拉取当前上游；拉取成功后会重新载入新版部署脚本。随后依次启动数据库、备份 PostgreSQL、构建镜像、停止旧 API/Worker、迁移、清除旧 Worker 就绪状态并重启服务。若存在未提交的已跟踪文件，脚本拒绝自动拉取。
+当 `.env` 和 `terminal-inspection_postgres-data` 数据卷同时存在时，脚本自动进入更新模式。更新默认复用数据库凭据，可选择新增登录用户并使用 `git pull --ff-only` 拉取当前上游；拉取成功后会重新载入新版部署脚本。随后依次启动数据库、备份 PostgreSQL、构建镜像、停止旧 API/Worker、迁移、清除旧 Worker 就绪状态并重启服务。若存在未提交的已跟踪文件，脚本拒绝自动拉取。
+
+非交互首次部署必须在进程环境中同时提供 `POSTGRES_PASSWORD`、`INITIAL_APP_USERNAME` 和 `INITIAL_APP_PASSWORD`；更新部署只有同时提供后两个变量时才新增用户。`INITIAL_APP_PASSWORD` 会在 Docker 命令执行前从进程环境移除，也不会写入 `.env`：
+
+```bash
+POSTGRES_PASSWORD=DbPass6 \
+INITIAL_APP_USERNAME=Admin \
+INITIAL_APP_PASSWORD=WebPass6 \
+./deploy.sh --yes --no-pull
+```
 
 脚本只更新自己管理的 Docker 字段；若 `.env` 原本含有供 uv/Conda 原生启动使用的 `DATABASE_URL`，会将其同步到本次 PostgreSQL 用户、密码和端口，同时保留权重路径、存储路径及其他自定义配置。真实部署会拒绝符号链接或非当前用户所有的 `.env`，并将权限收紧为 `600`；更新前还会在 `backups/env/` 中保留一份权限为 `600` 的配置备份。
 
 ### 2.1 Docker Hub 网络故障兜底
 
-基础镜像默认仍从 Docker Hub 获取。如果日志明确出现 Docker Hub 超时或连接重置，部署脚本先不拉取新版本，改用本地基础镜像缓存构建。本地缓存仍不可用时，交互模式会询问是否切换到 `m.daocloud.io/docker.io`，`--yes` 非交互模式则自动接受。该切换同时覆盖 Python、Node、Nginx 和 PostgreSQL 基础镜像，仅对当前部署进程生效，不会修改 Docker Desktop 全局配置。
+基础镜像默认从 Docker Hub 获取。如果日志明确出现镜像仓库超时或连接重置，部署脚本按 Docker Hub → `m.daocloud.io/docker.io` → 本地默认镜像缓存的顺序自动回退。本地阶段恢复 `python:3.11-slim`、`node:22-alpine`、`nginx:1.27-alpine` 和 `postgres:16-alpine` 等默认镜像名，并禁止 PostgreSQL 再次拉取。镜像源切换只对当前部署进程生效，不会修改 Docker Desktop 全局配置。
 
 自定义兼容镜像前缀时，使用 registry/路径形式，不要包含协议或末尾斜杠：
 
@@ -78,7 +82,7 @@ docker compose exec api python scripts/manage_users.py enable USERNAME
 DOCKER_MIRROR_PREFIX=mirror.example.com/docker.io ./deploy.sh
 ```
 
-国内公共镜像仍可能限流或临时不可用。如果兜底构建也失败，脚本会保留失败状态并输出详细日志，不会将普通 Dockerfile 或依赖安装错误误判为成功。
+国内公共镜像和本地缓存仍可能不可用。如果三级尝试全部失败，脚本会保留失败状态并输出详细日志；普通 Dockerfile、依赖安装或容器启动错误不会触发镜像源回退。
 
 CPU 是基础 Compose 配置；当 `DETECTION_DEVICE` 或 `CLASSIFICATION_DEVICE` 为 GPU 编号时，脚本自动叠加 `compose.gpu.yaml`。GPU 模式会先检查宿主机 GPU 编号，再在构建完成后、停止旧服务前验证 Worker 容器中的 CUDA，因此服务器必须安装 NVIDIA 驱动和 NVIDIA Container Toolkit。
 
