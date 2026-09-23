@@ -40,6 +40,8 @@ services:
       DETECTION_IMGSZ: "1280"
       CLASSIFICATION_IMGSZ: "224"
       MAX_IMAGES_PER_TASK: ${MAX_IMAGES_PER_TASK:-100}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
     volumes:
       - ./weights:/weights:ro
       - inspection-data:/data/terminal-inspection

@@ -8,6 +8,7 @@
 
 ```text
 浏览器上传图片
+  -> 服务端会话验证登录用户
   -> FastAPI 创建检测任务
   -> PostgreSQL 保存任务和队列状态
   -> 单个 Worker 领取任务
@@ -16,6 +17,7 @@
   -> ResNet18 分别判断 OK / NG
   -> 生成标注结果图并持久化
   -> 网页展示进度、结果对比和历史记录
+  -> 登录用户可逐图提交区域纠正与漏检反馈
 ```
 
 检测类别为：
@@ -31,7 +33,7 @@ label6
 ```
 
 - `label3`、`label5`：当前支持 ResNet18 OK/NG 分类，OK 使用绿色框，NG 使用红色框。
-- 其他区域：完成分区域检测，但暂不进行异常分类，使用灰色框。
+- 其他区域：完成分区域检测，但暂不进行异常分类，使用蓝色框。
 - 颜色分类：后端和网页已经预留接口，当前没有接入颜色模型，不会生成或猜测颜色结果。
 
 ## 2. 当前使用模型
@@ -91,6 +93,8 @@ LABEL5_CLASSIFIER_WEIGHTS=./weights/classifiers/label5/resnet18_best.pt
 
 DETECTION_DEVICE=cpu
 CLASSIFICATION_DEVICE=cpu
+SESSION_TTL_HOURS=12
+SESSION_COOKIE_SECURE=false
 ```
 
 设备配置示例：
@@ -103,7 +107,29 @@ CLASSIFICATION_DEVICE=cpu
 
 不要把包含真实数据库密码的 `.env` 提交到 Git。
 
-### 3.3 一键启动
+`SESSION_TTL_HOURS` 默认是 12 小时，允许范围为 1–168。直接通过 HTTP 访问时保持 `SESSION_COOKIE_SECURE=false`；由 HTTPS 对外提供服务时改为 `true`，否则浏览器不会在安全连接要求下发送登录 Cookie。
+
+### 3.3 创建登录用户
+
+系统不开放网页注册，也不会创建弱默认账户。首次启动前先执行迁移，再由管理员在终端创建用户；用户名区分大小写，密码会以 Argon2id 哈希保存：
+
+```bash
+uv run alembic upgrade head
+uv run python scripts/manage_users.py add USERNAME
+```
+
+Conda 路线将 `uv run python` 替换为当前环境的 `python`。可用的管理命令还有：
+
+```bash
+uv run python scripts/manage_users.py list
+uv run python scripts/manage_users.py reset-password USERNAME
+uv run python scripts/manage_users.py disable USERNAME
+uv run python scripts/manage_users.py enable USERNAME
+```
+
+重置密码或禁用用户会删除其现有会话，该用户的下一次请求会返回登录页。
+
+### 3.4 一键启动
 
 在项目根目录执行：
 
@@ -139,7 +165,7 @@ uv run python scripts/start_terminal_web.py \
 
 Conda 路线激活环境后，将上述命令中的 `uv run python` 替换为 `python`。
 
-### 3.4 Docker 一键部署与更新
+### 3.5 Docker 一键部署与更新
 
 Docker 部署不需要手动编辑完整 `.env`。在项目根目录执行：
 
@@ -148,6 +174,12 @@ Docker 部署不需要手动编辑完整 `.env`。在项目根目录执行：
 ```
 
 首次运行时，向导会询问数据库名称、用户名和两次隐藏密码，并为设备、端口、输入尺寸和单任务图片数提供默认值。配置完成后，它会检查 Docker、三个权重和 GPU，生成权限为 `600` 的 `.env`，再构建镜像、初始化 PostgreSQL、执行 Alembic 迁移并启动 API、Worker 和前端。
+
+部署完成后，按终端提示创建首个登录用户（密码会隐藏输入并要求二次确认）：
+
+```bash
+docker compose exec api python scripts/manage_users.py add USERNAME
+```
 
 当 `.env` 和 PostgreSQL 数据卷已经存在时，同一命令会自动进入更新模式：复用数据库凭据，可选择拉取当前 Git 上游，先备份数据库，再构建、迁移和健康检查。查看计划但不产生写入：
 
@@ -166,11 +198,14 @@ CPU 部署默认使用 `compose.yaml`；只要检测或分类设备设置为 GPU
 ## 4. 网页功能
 
 - 单次上传 1–100 张 JPG、PNG 或 BMP 图片；
-- 填写必填操作员，以及可选任务名称和备注；
+- 使用管理员预设账户登录；用户名区分大小写，不提供自行注册；
 - 查看目标检测、异常分类、结果生成等实时阶段；
 - 对比检测前原图和检测后完整结果图；
+- 对每张已完成图片逐区域反馈 OK/NG；`label1_thin` 与 `label1_thick` 统一按 `label1` 反馈，并可选择 B/G/R/W 颜色；
+- 对未检测出的逻辑区域标记漏检，已有反馈会按当前登录用户回填并支持覆盖更新；
 - 按进行中、全部、成功、失败筛选任务；
 - 查看历史任务、逐图预览和失败图片重试；
+- 含人工反馈的任务作为模型优化数据保留，不能从网页或 API 删除；
 - PostgreSQL 保存任务元数据，文件系统保存原图和结果图，正常重启不会丢失历史记录。
 
 当前版本使用单个推理 Worker，不支持多个 Worker 共享同一块 GPU。
@@ -210,7 +245,7 @@ React/Vite -> FastAPI -> PostgreSQL
 
 - 网页检测模型使用 `datasets/obb_thin_thick` 对应的 7 类定义。
 - YOLO 主数据集包含 198 张训练图片和 53 张测试图片。
-- PostgreSQL 保存任务、图片状态和结构化检测结果。
+- PostgreSQL 保存用户、服务端会话、任务、图片状态、结构化检测结果和人工反馈。
 - 数据库保存带时区的绝对时间，网页和 Docker PostgreSQL 统一按北京时间显示。
 - `INSPECTION_STORAGE_ROOT` 保存上传原图、裁剪图、标注结果图和 Worker 就绪信息。
 - 服务器备份必须同时覆盖 PostgreSQL 和整个 artifact 目录。

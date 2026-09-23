@@ -170,7 +170,7 @@ write_env_file() {
         if [[ -f "$destination" ]]; then
             while IFS= read -r line || [[ -n "$line" ]]; do
                 case "$line" in
-                    "# Docker Compose deployment configuration"|POSTGRES_DB=*|POSTGRES_USER=*|POSTGRES_PASSWORD=*|POSTGRES_BIND_ADDRESS=*|POSTGRES_PORT=*|WEB_PORT=*|DETECTION_DEVICE=*|CLASSIFICATION_DEVICE=*|DETECTION_IMGSZ=*|CLASSIFICATION_IMGSZ=*|MAX_IMAGES_PER_TASK=*)
+                    "# Docker Compose deployment configuration"|POSTGRES_DB=*|POSTGRES_USER=*|POSTGRES_PASSWORD=*|POSTGRES_BIND_ADDRESS=*|POSTGRES_PORT=*|WEB_PORT=*|DETECTION_DEVICE=*|CLASSIFICATION_DEVICE=*|DETECTION_IMGSZ=*|CLASSIFICATION_IMGSZ=*|MAX_IMAGES_PER_TASK=*|SESSION_TTL_HOURS=*|SESSION_COOKIE_SECURE=*)
                         ;;
                     DATABASE_URL=*)
                         had_database_url=true
@@ -196,6 +196,8 @@ write_env_file() {
         printf 'DETECTION_DEVICE=%s\n' "$DETECTION_DEVICE"
         printf 'CLASSIFICATION_DEVICE=%s\n' "$CLASSIFICATION_DEVICE"
         printf 'MAX_IMAGES_PER_TASK=%s\n' "$MAX_IMAGES_PER_TASK"
+        printf 'SESSION_TTL_HOURS=%s\n' "${SESSION_TTL_HOURS:-12}"
+        printf 'SESSION_COOKIE_SECURE=%s\n' "${SESSION_COOKIE_SECURE:-false}"
     } >"$temporary"
     chmod 600 "$temporary"
     mv "$temporary" "$destination"
@@ -230,7 +232,7 @@ load_env_file() {
         key=${line%%=*}
         value=${line#*=}
         case "$key" in
-            POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_BIND_ADDRESS|POSTGRES_PORT|WEB_PORT|DETECTION_DEVICE|CLASSIFICATION_DEVICE|MAX_IMAGES_PER_TASK)
+            POSTGRES_DB|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_BIND_ADDRESS|POSTGRES_PORT|WEB_PORT|DETECTION_DEVICE|CLASSIFICATION_DEVICE|MAX_IMAGES_PER_TASK|SESSION_TTL_HOURS|SESSION_COOKIE_SECURE)
                 printf -v "$key" '%s' "$value"
                 export "$key"
                 ;;
@@ -292,9 +294,11 @@ set_config_defaults() {
     DETECTION_DEVICE=${DETECTION_DEVICE:-$(detect_default_device)}
     CLASSIFICATION_DEVICE=${CLASSIFICATION_DEVICE:-$DETECTION_DEVICE}
     MAX_IMAGES_PER_TASK=${MAX_IMAGES_PER_TASK:-100}
+    SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+    SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
     export POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD POSTGRES_BIND_ADDRESS
     export POSTGRES_PORT WEB_PORT DETECTION_DEVICE CLASSIFICATION_DEVICE
-    export MAX_IMAGES_PER_TASK
+    export MAX_IMAGES_PER_TASK SESSION_TTL_HOURS SESSION_COOKIE_SECURE
 }
 
 
@@ -398,6 +402,8 @@ configure_update() {
 
 
 validate_configuration() {
+    SESSION_TTL_HOURS=${SESSION_TTL_HOURS:-12}
+    SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-false}
     validate_identifier "$POSTGRES_DB" || fatal "数据库名称只能包含字母、数字和下划线，且不能以数字开头。"
     validate_identifier "$POSTGRES_USER" || fatal "数据库用户只能包含字母、数字和下划线，且不能以数字开头。"
     validate_db_password_charset "${POSTGRES_PASSWORD:-}" || fatal "数据库密码包含 URL 非安全字符；请仅使用字母、数字、._~-。"
@@ -418,6 +424,10 @@ validate_configuration() {
     validate_device "$CLASSIFICATION_DEVICE" || fatal "分类设备必须是 cpu 或非负 GPU 编号。"
     validate_positive_integer "$MAX_IMAGES_PER_TASK" || fatal "单任务图片数必须是正整数。"
     (( MAX_IMAGES_PER_TASK <= 100 )) || fatal "单任务最大图片数不能超过 100。"
+    validate_positive_integer "$SESSION_TTL_HOURS" || fatal "登录会话时长必须是正整数。"
+    (( SESSION_TTL_HOURS <= 168 )) || fatal "登录会话时长不能超过 168 小时。"
+    [[ "$SESSION_COOKIE_SECURE" == "true" || "$SESSION_COOKIE_SECURE" == "false" ]] \
+        || fatal "SESSION_COOKIE_SECURE 只能是 true 或 false。"
 }
 
 
@@ -856,6 +866,8 @@ run_deployment() {
     printf '详细日志：%s\n' "$LOG_FILE"
     printf '实时日志：docker compose logs -f api worker frontend\n'
     printf '停止服务：docker compose down\n'
+    printf '\n首次使用请创建登录用户：\n'
+    printf 'docker compose exec api python scripts/manage_users.py add USERNAME\n'
 }
 
 

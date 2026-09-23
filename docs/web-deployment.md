@@ -22,6 +22,8 @@ test -s weights/classifiers/label5/resnet18_best.pt
 
 网页单任务限制为 100 张图片（`MAX_IMAGES_PER_TASK=100`）。Nginx 请求体上限为 2 GiB，用于覆盖 100 张生产图；若现场单批文件可能超过 2 GiB，需要同时调整 `deploy/nginx.conf`，而不是只改前端提示。
 
+系统使用服务端会话 Cookie，默认有效期 12 小时。局域网 HTTP 部署使用 `SESSION_COOKIE_SECURE=false`；生产 HTTPS 部署必须设置 `SESSION_COOKIE_SECURE=true`。该设置只控制 Cookie 是否要求安全连接，不替代 TLS、访问控制和数据库备份。
+
 ## 2. Docker Compose 一键部署与更新
 
 推荐从仓库根目录运行交互式向导：
@@ -38,6 +40,23 @@ test -s weights/classifiers/label5/resnet18_best.pt
 4. 生成权限为 `600` 的 `.env`；
 5. 构建镜像、初始化 PostgreSQL、执行迁移并启动服务；
 6. 等待 API、Worker 模型和前端健康检查通过。
+
+向导不会自动创建默认账户。部署成功后，终端会显示首用户创建命令：
+
+```bash
+docker compose exec api python scripts/manage_users.py add USERNAME
+```
+
+密码在容器终端中隐藏输入并要求二次确认，不会写入 `.env`。用户名区分大小写，`Admin` 与 `admin` 是两个不同账户。其他管理命令：
+
+```bash
+docker compose exec api python scripts/manage_users.py list
+docker compose exec api python scripts/manage_users.py reset-password USERNAME
+docker compose exec api python scripts/manage_users.py disable USERNAME
+docker compose exec api python scripts/manage_users.py enable USERNAME
+```
+
+重置密码或禁用用户会立即删除其现有会话。系统不提供网页注册；新增、启用、禁用和改密均由管理员执行。
 
 新建数据库密码至少 12 位，并限定为 URL 安全的字母、数字、点、下划线、波浪线和连字符；交互模式必须输入两次。脚本拒绝把 `.env.example` 的占位密码用于首次部署，也不会在摘要或日志中显示密码。若已有数据库仍使用旧的短密码，更新模式会保留原凭据并给出轮换提醒，因为只修改 `.env` 并不能修改数据库内部密码。查看执行计划但不写配置、不启动容器：
 
@@ -107,6 +126,8 @@ LABEL5_CLASSIFIER_WEIGHTS=/opt/terminal-inspection/current/weights/classifiers/l
 DETECTION_DEVICE=0
 CLASSIFICATION_DEVICE=0
 MAX_IMAGES_PER_TASK=100
+SESSION_TTL_HOURS=12
+SESSION_COOKIE_SECURE=true
 ```
 
 验证 Python 环境和模型加载依赖：
@@ -124,6 +145,14 @@ PostgreSQL 数据库首次创建：
 ```bash
 sudo -u postgres createuser --pwprompt terminal
 sudo -u postgres createdb --owner terminal terminal_inspection
+```
+
+迁移并创建首个原生部署用户：
+
+```bash
+cd /opt/terminal-inspection/current
+/home/tjr/miniconda3/bin/python -m alembic upgrade head
+/home/tjr/miniconda3/bin/python scripts/manage_users.py add USERNAME
 ```
 
 构建前端并把静态文件交给主机 Nginx：
@@ -156,7 +185,7 @@ nvidia-smi
 
 ## 4. 备份、升级与回滚
 
-每日备份至少包含 PostgreSQL 和整个 artifact 目录：
+每日备份至少包含 PostgreSQL 和整个 artifact 目录。PostgreSQL 现在还保存用户、服务端会话和逐图片人工反馈：
 
 ```bash
 pg_dump -Fc terminal_inspection > /srv/terminal-inspection/backups/terminal_inspection_$(date +%F).dump
@@ -173,9 +202,13 @@ sudo systemctl restart terminal-worker
 
 代码回滚使用上一已验证提交重新部署前端与两个服务。数据库迁移默认只向前；若新版本包含不可逆迁移，先从 `pg_dump` 恢复到独立数据库验证，再切换 `DATABASE_URL`。artifact 目录不能随代码版本删除。
 
+认证与反馈迁移的降级会删除用户、会话和反馈表，因此不能把 `alembic downgrade` 当作普通代码回滚。回滚前必须同时保留数据库 dump 与 artifact 目录，并在独立数据库中验证恢复。含人工反馈的检测任务会被 API 拒绝删除，这是为了保留后续模型优化所需的图片和纠正记录；如确需清理，应先导出反馈数据并制定显式的数据迁移流程，而不是直接绕过外键或删除持久卷。
+
 ## 5. 故障定位
 
 - `/api/v1/health` 中 `modelsReady=false`：检查三个权重路径、权限和文件是否非空。
 - `workerReady=false`：检查 Worker 日志、GPU 设备号和 `INSPECTION_STORAGE_ROOT/worker-readiness.json` 的更新时间。
 - 页面任务一直等待：确认只有一个 Worker 正在运行，并检查 PostgreSQL 连接。
 - 原图可见但结果图缺失：查看对应图片的脱敏错误信息和 Worker 日志；不要直接暴露服务器绝对路径。
+- 登录后立即返回登录页：检查账户是否被禁用、会话是否过期，以及 HTTPS 部署是否已设置 `SESSION_COOKIE_SECURE=true`。
+- 任务删除按钮不可用并提示“包含人工反馈”：这是数据保留策略，不是页面故障。

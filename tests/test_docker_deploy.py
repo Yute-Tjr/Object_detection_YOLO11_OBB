@@ -610,6 +610,14 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertEqual(api_environment["DETECTION_IMGSZ"], "1280")
         self.assertEqual(api_environment["CLASSIFICATION_IMGSZ"], "224")
         self.assertEqual(
+            api_environment["SESSION_TTL_HOURS"],
+            "${SESSION_TTL_HOURS:-12}",
+        )
+        self.assertEqual(
+            api_environment["SESSION_COOKIE_SECURE"],
+            "${SESSION_COOKIE_SECURE:-false}",
+        )
+        self.assertEqual(
             gpu_worker["deploy"]["resources"]["reservations"]["devices"][0][
                 "driver"
             ],
@@ -902,11 +910,19 @@ exit 0
             )
 
             commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            written_env = (project / ".env").read_text(encoding="utf-8")
             env_mode = stat.S_IMODE((project / ".env").stat().st_mode)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("部署完成", result.stdout)
         self.assertIn("http://127.0.0.1:8080/tasks", result.stdout)
+        self.assertIn(
+            "docker compose exec api python scripts/manage_users.py add USERNAME",
+            result.stdout,
+        )
+        self.assertIn("SESSION_TTL_HOURS=12", written_env)
+        self.assertIn("SESSION_COOKIE_SECURE=false", written_env)
+        self.assertNotIn("DEFAULT_PASSWORD", written_env)
         self.assertIn("正在执行，详细输出写入", result.stdout)
         self.assertIn("info\n", commands)
         self.assertIn("config --quiet", commands)
