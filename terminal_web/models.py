@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -229,6 +230,10 @@ class ImageFeedback(TimestampMixin, Base):
 class ImageFeedbackItem(TimestampMixin, Base):
     __tablename__ = "image_feedback_items"
     __table_args__ = (
+        CheckConstraint(
+            "source IN ('manual', 'model', 'unreviewed')",
+            name="ck_feedback_item_source",
+        ),
         UniqueConstraint(
             "feedback_id", "detection_id", name="uq_feedback_detection"
         ),
@@ -244,7 +249,8 @@ class ImageFeedbackItem(TimestampMixin, Base):
         ForeignKey("detections.id", ondelete="RESTRICT"), nullable=False
     )
     region_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    verdict: Mapped[str] = mapped_column(String(2), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="manual", nullable=False)
+    verdict: Mapped[str | None] = mapped_column(String(2))
     color: Mapped[str | None] = mapped_column(String(1))
 
     feedback: Mapped[ImageFeedback] = relationship(back_populates="items")

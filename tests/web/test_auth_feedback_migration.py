@@ -1,6 +1,8 @@
 import importlib
 import importlib.util
 import unittest
+import uuid
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import sqlalchemy as sa
@@ -8,8 +10,13 @@ from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import create_engine, inspect
 
+from terminal_web.models import ImageFeedbackItem
+
 
 MIGRATION_MODULE = "migrations.versions._20260923_04_add_auth_and_feedback"
+SOURCE_MIGRATION_MODULE = (
+    "migrations.versions._20260923_05_add_feedback_item_source"
+)
 NEW_TABLES = {
     "users",
     "user_sessions",
@@ -101,6 +108,86 @@ class AuthFeedbackMigrationTest(unittest.TestCase):
             remaining = set(inspect(connection).get_table_names())
             self.assertTrue(NEW_TABLES.isdisjoint(remaining))
             self.assertEqual(remaining, {"detections", "inspection_images"})
+
+    def test_source_migration_marks_existing_items_manual_and_allows_null_verdict(self):
+        base_migration = self.load_migration()
+        self.assertIsNotNone(
+            importlib.util.find_spec(SOURCE_MIGRATION_MODULE),
+            "feedback item source migration is missing",
+        )
+        source_migration = importlib.import_module(SOURCE_MIGRATION_MODULE)
+
+        with self.engine.begin() as connection:
+            self.create_parent_tables(connection)
+            operations = Operations(MigrationContext.configure(connection))
+            with patch.object(base_migration, "op", operations):
+                base_migration.upgrade()
+
+            metadata = sa.MetaData()
+            metadata.reflect(connection)
+            now = datetime.now(UTC)
+            user_id = uuid.uuid4().hex
+            image_id = uuid.uuid4().hex
+            detection_id = uuid.uuid4().hex
+            feedback_id = uuid.uuid4().hex
+            connection.execute(
+                metadata.tables["inspection_images"].insert(), {"id": image_id}
+            )
+            connection.execute(
+                metadata.tables["detections"].insert(), {"id": detection_id}
+            )
+            connection.execute(
+                metadata.tables["users"].insert(),
+                {
+                    "id": user_id,
+                    "username": "operator",
+                    "password_hash": "hash",
+                    "is_active": True,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            connection.execute(
+                metadata.tables["image_feedbacks"].insert(),
+                {
+                    "id": feedback_id,
+                    "image_id": image_id,
+                    "user_id": user_id,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            connection.execute(
+                metadata.tables["image_feedback_items"].insert(),
+                {
+                    "id": uuid.uuid4().hex,
+                    "feedback_id": feedback_id,
+                    "detection_id": detection_id,
+                    "region_label": "label3",
+                    "verdict": "NG",
+                    "color": None,
+                    "created_at": now,
+                },
+            )
+
+            with patch.object(source_migration, "op", operations):
+                source_migration.upgrade()
+
+            columns = {
+                item["name"]: item
+                for item in inspect(connection).get_columns("image_feedback_items")
+            }
+            migrated = connection.execute(
+                sa.text("SELECT source, verdict FROM image_feedback_items")
+            ).mappings().one()
+
+            self.assertFalse(columns["source"]["nullable"])
+            self.assertTrue(columns["verdict"]["nullable"])
+            self.assertEqual(migrated, {"source": "manual", "verdict": "NG"})
+
+        self.assertIn(
+            "source", {column.name for column in ImageFeedbackItem.__table__.columns}
+        )
 
 
 if __name__ == "__main__":
