@@ -16,6 +16,9 @@ DEPLOYMENT_MODE=""
 LOG_FILE=""
 COMPOSE_ARGS=()
 DOMESTIC_MIRROR_ACTIVE=false
+CREATE_APP_USER=false
+APP_USER_USERNAME=""
+APP_USER_PASSWORD=""
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     BLUE=$'\033[34m'
@@ -43,7 +46,7 @@ usage() {
 
 选项：
   --dry-run   显示配置和执行计划，不写入配置、不启动容器
-  --yes       非交互确认；首次部署时必须通过环境变量提供数据库密码
+  --yes       非交互确认；首次部署时必须通过环境变量提供数据库和登录用户凭据
   --pull      更新部署时直接执行 git pull --ff-only
   --no-pull   更新部署时不拉取远端代码
   -h, --help  显示帮助
@@ -136,6 +139,19 @@ validate_db_password_charset() {
 
 validate_identifier() {
     [[ "$1" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]
+}
+
+
+validate_app_username() {
+    local username=$1
+    [[ -n "$username" ]] \
+        && (( ${#username} <= 64 )) \
+        && [[ ! "$username" =~ [[:space:][:cntrl:]] ]]
+}
+
+
+validate_app_password() {
+    (( ${#1} >= 6 ))
 }
 
 
@@ -368,6 +384,84 @@ prompt_yes_no() {
 }
 
 
+capture_app_user_environment() {
+    APP_USER_USERNAME=${INITIAL_APP_USERNAME:-}
+    APP_USER_PASSWORD=${INITIAL_APP_PASSWORD:-}
+    unset INITIAL_APP_USERNAME INITIAL_APP_PASSWORD
+}
+
+
+prompt_app_user_credentials() {
+    local username=""
+    local first=""
+    local second=""
+
+    while true; do
+        printf '  登录用户名（区分大小写）: '
+        IFS= read -r username
+        if validate_app_username "$username"; then
+            break
+        fi
+        warning "用户名不能为空、不能包含空白或控制字符，且不能超过 64 个字符。"
+    done
+
+    while true; do
+        printf '  登录密码（至少 6 位）: '
+        IFS= read -rs first
+        printf '\n  再次输入登录密码: '
+        IFS= read -rs second
+        printf '\n'
+        if [[ "$first" != "$second" ]]; then
+            warning "两次密码不一致，请重新输入。"
+        elif ! validate_app_password "$first"; then
+            warning "登录密码至少需要 6 位。"
+        else
+            break
+        fi
+    done
+
+    APP_USER_USERNAME=$username
+    APP_USER_PASSWORD=$first
+}
+
+
+configure_app_user() {
+    local required=false
+    [[ "$DEPLOYMENT_MODE" == "update" ]] || required=true
+
+    if [[ "$ASSUME_YES" == "true" ]]; then
+        if [[ -z "$APP_USER_USERNAME" && -z "$APP_USER_PASSWORD" ]]; then
+            if [[ "$required" == "true" ]]; then
+                fatal "非交互首次部署必须同时提供 INITIAL_APP_USERNAME 和 INITIAL_APP_PASSWORD。"
+            fi
+            success "更新部署不新增登录用户"
+            return
+        fi
+        [[ -n "$APP_USER_USERNAME" && -n "$APP_USER_PASSWORD" ]] \
+            || fatal "新增登录用户时必须同时提供 INITIAL_APP_USERNAME 和 INITIAL_APP_PASSWORD。"
+    elif [[ "$required" == "true" ]]; then
+        section "04/10" "配置登录用户"
+        prompt_app_user_credentials
+    elif [[ -n "$APP_USER_USERNAME" || -n "$APP_USER_PASSWORD" ]]; then
+        [[ -n "$APP_USER_USERNAME" && -n "$APP_USER_PASSWORD" ]] \
+            || fatal "新增登录用户时必须同时提供 INITIAL_APP_USERNAME 和 INITIAL_APP_PASSWORD。"
+    elif prompt_yes_no "是否新增登录用户？" "no"; then
+        section "04/10" "配置登录用户"
+        prompt_app_user_credentials
+    else
+        success "本次更新不新增登录用户"
+        return
+    fi
+
+    validate_app_username "$APP_USER_USERNAME" \
+        || fatal "登录用户名不能为空、不能包含空白或控制字符，且不能超过 64 个字符。"
+    validate_app_password "$APP_USER_PASSWORD" \
+        || fatal "登录密码至少需要 6 位。"
+    CREATE_APP_USER=true
+    success "已配置待创建登录用户：$APP_USER_USERNAME"
+}
+
+
 configure_initial_install() {
     section "02/10" "配置数据库"
     prompt_default POSTGRES_DB "数据库名称" "terminal_inspection"
@@ -438,6 +532,11 @@ print_config_summary() {
     printf '  %-18s %s\n' "分类设备" "$CLASSIFICATION_DEVICE"
     printf '  %-18s %s\n' "网页端口" "$WEB_PORT"
     printf '  %-18s %s\n' "单任务图片数" "$MAX_IMAGES_PER_TASK"
+    if [[ "$CREATE_APP_USER" == "true" ]]; then
+        printf '  %-18s %s\n' "新增登录用户" "$APP_USER_USERNAME"
+    else
+        printf '  %-18s %s\n' "新增登录用户" "否"
+    fi
     printf '%s\n' '──────────────────────────────────────────────'
 }
 
@@ -740,6 +839,30 @@ wait_for_worker_ready() {
 }
 
 
+create_configured_app_user() {
+    local status=0
+    local username=$APP_USER_USERNAME
+
+    [[ "$CREATE_APP_USER" == "true" ]] || return 0
+    section "10/10" "创建登录用户"
+    if printf '%s\n%s\n' "$APP_USER_PASSWORD" "$APP_USER_PASSWORD" \
+        | compose exec -T api python scripts/manage_users.py add "$username" >>"$LOG_FILE" 2>&1; then
+        APP_USER_PASSWORD=""
+        unset APP_USER_PASSWORD
+        success "登录用户已创建：$username"
+        return 0
+    else
+        status=$?
+    fi
+
+    APP_USER_PASSWORD=""
+    unset APP_USER_PASSWORD
+    warning "登录用户创建失败，详细信息已写入：$LOG_FILE"
+    printf '  如该用户名已存在，可重置密码：docker compose exec api python scripts/manage_users.py reset-password %q\n' "$username" >&2
+    fatal "创建登录用户失败（退出码 ${status}）。"
+}
+
+
 backup_database() {
     local backup_dir="$PROJECT_ROOT/backups"
     local stamp
@@ -801,6 +924,9 @@ show_dry_run_plan() {
     printf '  3. 构建 API、Worker 和前端镜像\n'
     printf '  4. 启动 PostgreSQL 并执行 Alembic 迁移\n'
     printf '  5. 启动 API、Worker 和前端并等待健康检查\n'
+    if [[ "$CREATE_APP_USER" == "true" ]]; then
+        printf '  6. 创建登录用户：%s\n' "$APP_USER_USERNAME"
+    fi
 }
 
 
@@ -847,6 +973,7 @@ run_deployment() {
         fatal "API 未能进入健康状态，查看 $LOG_FILE。"
     fi
     success "API：healthy"
+    create_configured_app_user
     if ! wait_for_worker_ready 300; then
         compose logs --tail=100 worker >>"$LOG_FILE" 2>&1 || true
         fatal "Worker 未在规定时间内完成模型加载，查看 $LOG_FILE。"
@@ -863,8 +990,6 @@ run_deployment() {
     printf '详细日志：%s\n' "$LOG_FILE"
     printf '实时日志：docker compose logs -f api worker frontend\n'
     printf '停止服务：docker compose down\n'
-    printf '\n首次使用请创建登录用户：\n'
-    printf 'docker compose exec api python scripts/manage_users.py add USERNAME\n'
 }
 
 
@@ -892,6 +1017,7 @@ parse_args() {
 main() {
     parse_args "$@"
     cd "$PROJECT_ROOT"
+    capture_app_user_environment
 
     section "01/10" "检查运行环境"
     check_required_commands
@@ -924,6 +1050,7 @@ main() {
     else
         configure_initial_install
     fi
+    configure_app_user
     validate_configuration
     print_config_summary
 

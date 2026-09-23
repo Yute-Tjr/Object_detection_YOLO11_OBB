@@ -117,6 +117,14 @@ if [[ " $* " == *" exec -T postgres pg_dump "* ]]; then
     echo "fake-database-dump"
     exit 0
 fi
+if [[ " $* " == *" exec -T api python scripts/manage_users.py add "* ]]; then
+    cat > "${FAKE_APP_USER_STDIN_LOG}"
+    if [[ "${FAKE_APP_USER_FAILURE:-false}" == "true" ]]; then
+        echo "错误：用户已存在" >&2
+        exit 2
+    fi
+    exit 0
+fi
 exit 0
 """,
         encoding="utf-8",
@@ -133,6 +141,7 @@ exit 0
             "FAKE_VOLUME_EXISTS": "true" if volume_exists else "false",
             "FAKE_DOCKER_LOG": str(root / "docker-commands.log"),
             "FAKE_DOCKER_IMAGE_LOG": str(root / "docker-images.log"),
+            "FAKE_APP_USER_STDIN_LOG": str(root / "app-user-stdin.log"),
             "NO_COLOR": "1",
             "POSTGRES_DB": "terminal_inspection",
             "POSTGRES_USER": "terminal",
@@ -147,6 +156,13 @@ exit 0
             "MAX_IMAGES_PER_TASK": "100",
         }
     )
+    if not volume_exists:
+        env.update(
+            {
+                "INITIAL_APP_USERNAME": "InitialAdmin",
+                "INITIAL_APP_PASSWORD": "Secret6",
+            }
+        )
     return env
 
 
@@ -690,7 +706,114 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertIn("演练模式", result.stdout)
         self.assertIn("不会写入 .env", result.stdout)
         self.assertNotIn("SafePass_2026", result.stdout + result.stderr)
+        self.assertNotIn("Secret6", result.stdout + result.stderr)
         self.assertFalse(env_exists)
+
+    def test_noninteractive_first_install_requires_app_user_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env.pop("INITIAL_APP_USERNAME")
+            env.pop("INITIAL_APP_PASSWORD")
+
+            result = subprocess.run(
+                [str(SCRIPT), "--dry-run", "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("INITIAL_APP_USERNAME", result.stdout + result.stderr)
+        self.assertIn("INITIAL_APP_PASSWORD", result.stdout + result.stderr)
+
+    def test_first_install_creates_app_user_via_stdin_without_leaking_password(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            deploy_log = next((project / "deploy-logs").glob("deploy-*.log")).read_text(encoding="utf-8")
+            written_env = (project / ".env").read_text(encoding="utf-8")
+            password_stdin = (project / "app-user-stdin.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("manage_users.py add InitialAdmin", commands)
+        self.assertEqual(password_stdin, "Secret6\nSecret6\n")
+        for visible in (result.stdout, result.stderr, commands, deploy_log, written_env):
+            self.assertNotIn("Secret6", visible)
+        self.assertNotIn("INITIAL_APP_USERNAME", written_env)
+        self.assertNotIn("INITIAL_APP_PASSWORD", written_env)
+        self.assertIn("登录用户已创建：InitialAdmin", result.stdout)
+
+    def test_update_skips_user_creation_without_explicit_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=True)
+            (project / ".env").write_text(
+                "POSTGRES_DB=terminal_inspection\nPOSTGRES_USER=terminal\n"
+                "POSTGRES_PASSWORD=ExistingPass_2026\nPOSTGRES_BIND_ADDRESS=127.0.0.1\n"
+                "POSTGRES_PORT=5432\nWEB_PORT=8080\nDETECTION_DEVICE=cpu\n"
+                "CLASSIFICATION_DEVICE=cpu\nMAX_IMAGES_PER_TASK=100\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("manage_users.py add", commands)
+
+    def test_update_adds_user_when_noninteractive_credentials_are_provided(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=True)
+            env["INITIAL_APP_USERNAME"] = "NewOperator"
+            env["INITIAL_APP_PASSWORD"] = "NewPass6"
+            (project / ".env").write_text(
+                "POSTGRES_DB=terminal_inspection\nPOSTGRES_USER=terminal\n"
+                "POSTGRES_PASSWORD=ExistingPass_2026\nPOSTGRES_BIND_ADDRESS=127.0.0.1\n"
+                "POSTGRES_PORT=5432\nWEB_PORT=8080\nDETECTION_DEVICE=cpu\n"
+                "CLASSIFICATION_DEVICE=cpu\nMAX_IMAGES_PER_TASK=100\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            password_stdin = (project / "app-user-stdin.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("manage_users.py add NewOperator", commands)
+        self.assertEqual(password_stdin, "NewPass6\nNewPass6\n")
+        self.assertNotIn("NewPass6", result.stdout + result.stderr + commands)
 
     def test_update_dry_run_reuses_existing_database_credentials(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -923,10 +1046,7 @@ exit 0
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("部署完成", result.stdout)
         self.assertIn("http://127.0.0.1:8080/tasks", result.stdout)
-        self.assertIn(
-            "docker compose exec api python scripts/manage_users.py add USERNAME",
-            result.stdout,
-        )
+        self.assertIn("登录用户已创建：InitialAdmin", result.stdout)
         self.assertIn("SESSION_TTL_HOURS=12", written_env)
         self.assertIn("SESSION_COOKIE_SECURE=false", written_env)
         self.assertNotIn("DEFAULT_PASSWORD", written_env)
