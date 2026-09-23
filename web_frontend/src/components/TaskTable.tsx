@@ -83,6 +83,16 @@ export function TaskTable({
                 ? Math.round((task.completedImages / task.totalImages) * 100)
                 : 0;
               const tone = statusTone(task.status);
+              const isDeleting = deletingTaskId === task.id;
+              const isInProgress = task.status === "queued" || task.status === "running";
+              const deleteDisabled = isDeleting || isInProgress || task.hasFeedback;
+              const deleteTitle = isDeleting
+                ? "正在删除任务"
+                : isInProgress
+                  ? "进行中的任务不能删除"
+                  : task.hasFeedback
+                    ? "包含人工反馈，已作为模型优化数据保留"
+                    : undefined;
               return (
                   <tr className="task-row" key={task.id}>
                     <td>{index + 1}</td>
@@ -115,20 +125,12 @@ export function TaskTable({
                             type="button"
                             className="delete-button"
                             aria-label={`删除 ${task.displayId}`}
-                            disabled={
-                              task.status === "queued"
-                              || task.status === "running"
-                              || deletingTaskId === task.id
-                            }
-                            title={
-                              task.status === "queued" || task.status === "running"
-                                ? "进行中的任务不能删除"
-                                : undefined
-                            }
+                            disabled={deleteDisabled}
+                            title={deleteTitle}
                             onClick={() => onDeleteTask(task)}
                           >
                             <Trash size={17} />
-                            {deletingTaskId === task.id ? "删除中" : "删除"}
+                            {isDeleting ? "删除中" : "删除"}
                           </button>
                         )}
                       </div>

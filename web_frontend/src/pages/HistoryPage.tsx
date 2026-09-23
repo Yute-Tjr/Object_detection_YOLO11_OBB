@@ -93,7 +93,7 @@ export function HistoryPage({
   };
 
   const requestDeleteTask = (task: TaskSummary) => {
-    if (task.status !== "queued" && task.status !== "running") {
+    if (task.status !== "queued" && task.status !== "running" && !task.hasFeedback) {
       setPendingDeleteTask(task);
     }
   };

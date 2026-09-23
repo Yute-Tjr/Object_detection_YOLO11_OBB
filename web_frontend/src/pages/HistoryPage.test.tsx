@@ -17,6 +17,7 @@ const detail: TaskDetail = {
   completedImages: 2,
   succeededImages: 1,
   failedImages: 1,
+  hasFeedback: false,
   createdAt: "2026-09-20T08:00:00Z",
   images: [
     {
@@ -52,6 +53,9 @@ const page: TaskPage = { items: [detail], total: 1, offset: 0, limit: 100 };
 
 function client(overrides = {}) {
   return {
+    getCurrentUser: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
     getHealth: vi.fn(),
     createTask: vi.fn(),
     listTasks: vi.fn().mockResolvedValue(page),
@@ -60,6 +64,8 @@ function client(overrides = {}) {
     getImage: vi.fn(),
     retryImage: vi.fn().mockResolvedValue({ ...detail.images[1], status: "queued" }),
     deleteTask: vi.fn().mockResolvedValue(undefined),
+    getImageFeedback: vi.fn(),
+    updateImageFeedback: vi.fn(),
     ...overrides,
   };
 }
@@ -206,6 +212,24 @@ describe("HistoryPage", () => {
     await user.click(deleteButton);
     expect(screen.getByRole("dialog", { name: "确认删除任务" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "确认删除任务" })).not.toBeInTheDocument();
+    expect(api.deleteTask).not.toHaveBeenCalled();
+  });
+
+  it("does not offer deletion for a task that contains feedback", async () => {
+    const feedbackDetail = { ...detail, hasFeedback: true };
+    const api = client({
+      listTasks: vi.fn().mockResolvedValue({ ...page, items: [feedbackDetail] }),
+      getTask: vi.fn().mockResolvedValue(feedbackDetail),
+    });
+    const user = userEvent.setup();
+    render(<HistoryPage client={api} />);
+
+    const button = await screen.findByRole("button", { name: "删除 T20260920-0100" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "包含人工反馈，已作为模型优化数据保留");
+    await user.click(button);
 
     expect(screen.queryByRole("dialog", { name: "确认删除任务" })).not.toBeInTheDocument();
     expect(api.deleteTask).not.toHaveBeenCalled();

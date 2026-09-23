@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiClient, subscribeUnauthorized } from "./client";
+import { apiClient, subscribeUnauthorized } from "./client";
 
 
 afterEach(() => {
@@ -95,7 +95,7 @@ describe("apiClient", () => {
     const unsubscribe = subscribeUnauthorized(listener);
 
     await expect(apiClient.getTask("task-1")).rejects.toEqual(
-      expect.objectContaining<ApiError>({
+      expect.objectContaining({
         message: "authentication required",
         status: 401,
       }),

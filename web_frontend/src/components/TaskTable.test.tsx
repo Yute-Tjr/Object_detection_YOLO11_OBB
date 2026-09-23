@@ -18,6 +18,7 @@ const tasks: TaskSummary[] = [
     completedImages: 63,
     succeededImages: 63,
     failedImages: 0,
+    hasFeedback: false,
     createdAt: "2026-09-20T02:24:00Z",
   },
   {
@@ -29,6 +30,7 @@ const tasks: TaskSummary[] = [
     completedImages: 12,
     succeededImages: 12,
     failedImages: 0,
+    hasFeedback: false,
     createdAt: "2026-09-20T01:24:00Z",
   },
   {
@@ -40,6 +42,7 @@ const tasks: TaskSummary[] = [
     completedImages: 20,
     succeededImages: 18,
     failedImages: 2,
+    hasFeedback: false,
     createdAt: "2026-09-19T18:24:00Z",
   },
 ];
@@ -88,5 +91,25 @@ describe("TaskTable", () => {
     render(<TaskTable tasks={[successTask]} onSelectTask={vi.fn()} initialFilter="all" />);
 
     expect(screen.getByText("2026-09-20 09:24")).toBeInTheDocument();
+  });
+
+  it("disables deletion for tasks that contain feedback", async () => {
+    const onDeleteTask = vi.fn();
+    const user = userEvent.setup();
+    const feedbackTask = { ...tasks[1], hasFeedback: true };
+    render(
+      <TaskTable
+        tasks={[feedbackTask]}
+        onSelectTask={vi.fn()}
+        onDeleteTask={onDeleteTask}
+        initialFilter="all"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: "删除 T20260920-0002" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "包含人工反馈，已作为模型优化数据保留");
+    await user.click(button);
+    expect(onDeleteTask).not.toHaveBeenCalled();
   });
 });

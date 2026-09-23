@@ -121,6 +121,7 @@ export interface TaskSummary {
   completedImages: number;
   succeededImages: number;
   failedImages: number;
+  hasFeedback: boolean;
   createdAt: string;
   startedAt?: string | null;
   finishedAt?: string | null;

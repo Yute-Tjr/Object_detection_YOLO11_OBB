@@ -24,6 +24,7 @@ const runningTask: TaskDetail = {
   completedImages: 0,
   succeededImages: 0,
   failedImages: 0,
+  hasFeedback: false,
   createdAt: "2026-09-20T08:00:00Z",
   images: [
     {
@@ -44,6 +45,9 @@ const runningTask: TaskDetail = {
 
 function fakeClient(overrides = {}) {
   return {
+    getCurrentUser: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
     getHealth: vi.fn().mockResolvedValue(health),
     createTask: vi.fn().mockResolvedValue(runningTask),
     getTask: vi.fn().mockResolvedValue(runningTask),
@@ -52,6 +56,8 @@ function fakeClient(overrides = {}) {
     getImage: vi.fn(),
     retryImage: vi.fn(),
     deleteTask: vi.fn(),
+    getImageFeedback: vi.fn(),
+    updateImageFeedback: vi.fn(),
     ...overrides,
   };
 }

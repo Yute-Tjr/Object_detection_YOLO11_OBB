@@ -17,6 +17,7 @@ const runningTask: TaskDetail = {
   completedImages: 0,
   succeededImages: 0,
   failedImages: 0,
+  hasFeedback: false,
   createdAt: "2026-09-20T08:00:00Z",
   images: [],
 };
@@ -28,6 +29,9 @@ function Probe({ client }: { client: ApiClient }) {
 
 function fakeClient(getTask: ApiClient["getTask"]): ApiClient {
   return {
+    getCurrentUser: vi.fn(),
+    login: vi.fn(),
+    logout: vi.fn(),
     getHealth: vi.fn(),
     createTask: vi.fn(),
     listTasks: vi.fn(),
@@ -36,6 +40,8 @@ function fakeClient(getTask: ApiClient["getTask"]): ApiClient {
     getImage: vi.fn(),
     retryImage: vi.fn(),
     deleteTask: vi.fn(),
+    getImageFeedback: vi.fn(),
+    updateImageFeedback: vi.fn(),
   };
 }
 
