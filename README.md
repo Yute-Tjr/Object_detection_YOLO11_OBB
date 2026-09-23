@@ -155,6 +155,12 @@ Docker 部署不需要手动编辑完整 `.env`。在项目根目录执行：
 ./deploy.sh --dry-run
 ```
 
+构建基础镜像时依次尝试 Docker Hub、本地镜像缓存和 DaoCloud 国内镜像。切换国内源前会在交互模式中询问；`--yes` 模式会自动接受该兜底。如需改用其他兼容镜像源，可临时指定不含 `https://` 的前缀：
+
+```bash
+DOCKER_MIRROR_PREFIX=mirror.example.com/docker.io ./deploy.sh
+```
+
 CPU 部署默认使用 `compose.yaml`；只要检测或分类设备设置为 GPU 编号，向导就会自动叠加 `compose.gpu.yaml`。Docker 部署细节见 [部署文档](docs/web-deployment.md)。
 
 ## 4. 网页功能

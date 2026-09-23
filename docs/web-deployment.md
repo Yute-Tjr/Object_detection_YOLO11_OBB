@@ -49,6 +49,18 @@ test -s weights/classifiers/label5/resnet18_best.pt
 
 脚本只更新自己管理的 Docker 字段；若 `.env` 原本含有供 uv/Conda 原生启动使用的 `DATABASE_URL`，会将其同步到本次 PostgreSQL 用户、密码和端口，同时保留权重路径、存储路径及其他自定义配置。真实部署会拒绝符号链接或非当前用户所有的 `.env`，并将权限收紧为 `600`；更新前还会在 `backups/env/` 中保留一份权限为 `600` 的配置备份。
 
+### 2.1 Docker Hub 网络故障兜底
+
+基础镜像默认仍从 Docker Hub 获取。如果日志明确出现 Docker Hub 超时或连接重置，部署脚本先不拉取新版本，改用本地基础镜像缓存构建。本地缓存仍不可用时，交互模式会询问是否切换到 `m.daocloud.io/docker.io`，`--yes` 非交互模式则自动接受。该切换同时覆盖 Python、Node、Nginx 和 PostgreSQL 基础镜像，仅对当前部署进程生效，不会修改 Docker Desktop 全局配置。
+
+自定义兼容镜像前缀时，使用 registry/路径形式，不要包含协议或末尾斜杠：
+
+```bash
+DOCKER_MIRROR_PREFIX=mirror.example.com/docker.io ./deploy.sh
+```
+
+国内公共镜像仍可能限流或临时不可用。如果兜底构建也失败，脚本会保留失败状态并输出详细日志，不会将普通 Dockerfile 或依赖安装错误误判为成功。
+
 CPU 是基础 Compose 配置；当 `DETECTION_DEVICE` 或 `CLASSIFICATION_DEVICE` 为 GPU 编号时，脚本自动叠加 `compose.gpu.yaml`。GPU 模式会先检查宿主机 GPU 编号，再在构建完成后、停止旧服务前验证 Worker 容器中的 CUDA，因此服务器必须安装 NVIDIA 驱动和 NVIDIA Container Toolkit。
 
 高级用途仍可手动执行 Compose。CPU 模式：

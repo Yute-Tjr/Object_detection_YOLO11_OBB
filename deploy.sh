@@ -15,6 +15,7 @@ CONFIG_CHANGED=false
 DEPLOYMENT_MODE=""
 LOG_FILE=""
 COMPOSE_ARGS=()
+DOMESTIC_MIRROR_ACTIVE=false
 
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
     BLUE=$'\033[34m'
@@ -150,6 +151,11 @@ validate_positive_integer() {
 
 validate_device() {
     [[ "$1" == "cpu" || "$1" =~ ^[0-9]+$ ]]
+}
+
+
+validate_docker_image_prefix() {
+    [[ "$1" =~ ^[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._-]+)*$ ]]
 }
 
 
@@ -578,24 +584,91 @@ execute_logged_command() {
 }
 
 
+log_since() {
+    local previous_line_count=$1
+    tail -n "+$(( previous_line_count + 1 ))" "$LOG_FILE"
+}
+
+
+docker_registry_unavailable_since() {
+    local previous_line_count=$1
+    log_since "$previous_line_count" \
+        | grep -Eq '(auth\.docker\.io|registry-1\.docker\.io)' \
+        && log_since "$previous_line_count" \
+            | grep -Eq '(DeadlineExceeded|i/o timeout|TLS handshake timeout|context deadline exceeded|connection reset by peer)'
+}
+
+
+enable_domestic_image_source() {
+    local prefix=${DOCKER_MIRROR_PREFIX:-m.daocloud.io/docker.io}
+
+    [[ "$DOMESTIC_MIRROR_ACTIVE" == "true" ]] && return 0
+    validate_docker_image_prefix "$prefix" \
+        || fatal "国内镜像前缀无效：${prefix}。请使用不含协议的 registry/路径格式。"
+
+    warning "Docker Hub 与本地基础镜像缓存均不可用。"
+    info "是否切换到国内镜像 ${prefix} 继续部署？"
+    prompt_yes_no "确认切换" "yes" || return 1
+
+    PYTHON_BASE_IMAGE="${prefix}/library/python:3.11-slim"
+    NODE_BASE_IMAGE="${prefix}/library/node:22-alpine"
+    NGINX_BASE_IMAGE="${prefix}/library/nginx:1.27-alpine"
+    POSTGRES_BASE_IMAGE="${prefix}/library/postgres:16-alpine"
+    export PYTHON_BASE_IMAGE NODE_BASE_IMAGE NGINX_BASE_IMAGE POSTGRES_BASE_IMAGE
+    DOMESTIC_MIRROR_ACTIVE=true
+    success "已切换到国内基础镜像源：${prefix}"
+}
+
+
 run_logged_step() {
     local number=$1
     local label=$2
     shift 2
     local with_progress=false
+    local log_line_count
     [[ "$label" == "构建服务镜像" ]] && with_progress=true
     section "$number" "$label"
     info "正在执行，详细输出写入 $LOG_FILE"
+    log_line_count=$(wc -l < "$LOG_FILE")
     if execute_logged_command "$with_progress" "$@"; then
         success "$label 完成"
     else
         local status=$?
         if [[ "$label" == "构建服务镜像" ]] \
-            && grep -Fq 'x-docker-expose-session-sharedkey' "$LOG_FILE" \
-            && grep -Fq 'non-printable ASCII characters' "$LOG_FILE"; then
+            && log_since "$log_line_count" | grep -Fq 'x-docker-expose-session-sharedkey' \
+            && log_since "$log_line_count" | grep -Fq 'non-printable ASCII characters'; then
             warning "检测到 Docker BuildKit 会话异常，自动重试一次。"
             if execute_logged_command "$with_progress" "$@"; then
                 success "$label 重试完成"
+                return 0
+            else
+                status=$?
+            fi
+        fi
+        if [[ "$label" == "构建服务镜像" ]] \
+            && docker_registry_unavailable_since "$log_line_count"; then
+            warning "检测到 Docker Hub 网络异常，改用本地基础镜像缓存重新构建。"
+            if execute_logged_command "$with_progress" build_service_images cached; then
+                success "$label 完成（使用本地基础镜像缓存）"
+                return 0
+            else
+                status=$?
+            fi
+            if enable_domestic_image_source; then
+                if execute_logged_command "$with_progress" build_service_images mirror; then
+                    success "$label 完成（使用国内基础镜像源）"
+                    return 0
+                else
+                    status=$?
+                fi
+            fi
+        fi
+        if [[ "$label" == "启动 PostgreSQL" \
+            && "$DOMESTIC_MIRROR_ACTIVE" != "true" ]] \
+            && docker_registry_unavailable_since "$log_line_count" \
+            && enable_domestic_image_source; then
+            if execute_logged_command "$with_progress" "$@"; then
+                success "$label 完成（使用国内基础镜像源）"
                 return 0
             else
                 status=$?
@@ -609,9 +682,22 @@ run_logged_step() {
 
 
 build_service_images() {
-    compose build --pull api || return $?
-    compose build --pull worker || return $?
-    compose build --pull frontend
+    local mode=${1:-pull}
+
+    if [[ "$DOMESTIC_MIRROR_ACTIVE" == "true" ]]; then
+        mode=mirror
+    fi
+
+    if [[ "$mode" == "pull" || "$mode" == "mirror" ]]; then
+        compose build --pull api || return $?
+        compose build --pull worker || return $?
+        compose build --pull frontend
+        return
+    fi
+
+    compose build api || return $?
+    compose build worker || return $?
+    compose build frontend
 }
 
 

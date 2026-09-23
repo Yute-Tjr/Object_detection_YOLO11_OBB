@@ -53,12 +53,41 @@ def fake_docker_environment(root: Path, *, volume_exists: bool) -> dict[str, str
     docker.write_text(
         """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "${FAKE_DOCKER_LOG}"
+printf '%s|%s|%s|%s\\n' \
+    "${PYTHON_BASE_IMAGE:-}" \
+    "${NODE_BASE_IMAGE:-}" \
+    "${NGINX_BASE_IMAGE:-}" \
+    "${POSTGRES_BASE_IMAGE:-}" >> "${FAKE_DOCKER_IMAGE_LOG}"
 if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_TRANSIENT:-false}" == "true" ]]; then
     if [[ ! -e "${FAKE_BUILD_MARKER}" ]]; then
         : > "${FAKE_BUILD_MARKER}"
         echo 'failed to dial gRPC: header key "x-docker-expose-session-sharedkey" contains value with non-printable ASCII characters' >&2
         exit 1
     fi
+fi
+if [[ " $* " == *" build --pull api "* && "${FAKE_REGISTRY_TIMEOUT:-false}" == "true" ]]; then
+    echo 'failed to authorize: DeadlineExceeded: failed to fetch anonymous token: Get "https://auth.docker.io/token": dial tcp 203.0.113.10:443: i/o timeout' >&2
+    exit 1
+fi
+if [[ " $* " == *" build --pull api "* && "${FAKE_REGISTRY_RESET:-false}" == "true" ]]; then
+    echo 'failed to authorize: failed to fetch anonymous token: Get "https://auth.docker.io/token": read tcp 192.168.3.29:57585->172.64.144.78:443: read: connection reset by peer' >&2
+    exit 1
+fi
+if [[ "${FAKE_REGISTRY_AND_CACHE_UNAVAILABLE:-false}" == "true" \
+    && ( " $* " == *" build --pull api "* || " $* " == *" build api "* ) \
+    && "${PYTHON_BASE_IMAGE:-}" != *"m.daocloud.io/docker.io/library/python:3.11-slim" ]]; then
+    echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
+    exit 1
+fi
+if [[ "${FAKE_POSTGRES_REGISTRY_UNAVAILABLE:-false}" == "true" \
+    && " $* " == *" up -d postgres "* \
+    && "${POSTGRES_BASE_IMAGE:-}" != *"m.daocloud.io/docker.io/library/postgres:16-alpine" ]]; then
+    echo 'failed to fetch anonymous token from auth.docker.io: connection reset by peer' >&2
+    exit 1
+fi
+if [[ " $* " == *" build --pull api "* && "${FAKE_BUILD_ERROR:-false}" == "true" ]]; then
+    echo 'Dockerfile parse error: unknown instruction' >&2
+    exit 1
 fi
 if [[ "$1 $2" == "compose version" ]]; then
     echo "Docker Compose version v2.35.1"
@@ -102,6 +131,7 @@ exit 0
             "DEPLOY_LOG_DIR": str(root / "deploy-logs"),
             "FAKE_VOLUME_EXISTS": "true" if volume_exists else "false",
             "FAKE_DOCKER_LOG": str(root / "docker-commands.log"),
+            "FAKE_DOCKER_IMAGE_LOG": str(root / "docker-images.log"),
             "NO_COLOR": "1",
             "POSTGRES_DB": "terminal_inspection",
             "POSTGRES_USER": "terminal",
@@ -186,6 +216,175 @@ class DockerDeployScriptTest(unittest.TestCase):
         self.assertEqual(commands.count(" build --pull worker\n"), 1)
         self.assertEqual(commands.count(" build --pull frontend\n"), 1)
         self.assertIn("BuildKit 会话异常，自动重试一次", result.stdout)
+
+    def test_registry_timeout_falls_back_to_cached_base_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_REGISTRY_TIMEOUT"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            deploy_log = next((project / "deploy-logs").glob("deploy-*.log")).read_text(
+                encoding="utf-8"
+            )
+
+        self.assertEqual(
+            result.returncode,
+            0,
+            result.stdout + result.stderr + "\nCOMMANDS:\n" + commands + "\nLOG:\n" + deploy_log,
+        )
+        self.assertEqual(commands.count(" build --pull api\n"), 1)
+        self.assertEqual(commands.count(" build api\n"), 1)
+        self.assertEqual(commands.count(" build worker\n"), 1)
+        self.assertEqual(commands.count(" build frontend\n"), 1)
+        self.assertNotIn(" build --pull worker\n", commands)
+        self.assertIn("Docker Hub 网络异常，改用本地基础镜像缓存", result.stdout)
+
+    def test_non_network_build_error_does_not_fall_back_to_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_BUILD_ERROR"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(commands.count(" build --pull api\n"), 1)
+        self.assertNotIn(" build api\n", commands)
+        self.assertNotIn("改用本地基础镜像缓存", result.stdout + result.stderr)
+
+    def test_registry_connection_reset_falls_back_to_cached_base_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_REGISTRY_RESET"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(commands.count(" build --pull api\n"), 1)
+        self.assertEqual(commands.count(" build api\n"), 1)
+        self.assertEqual(commands.count(" build worker\n"), 1)
+        self.assertEqual(commands.count(" build frontend\n"), 1)
+        self.assertNotIn(" build --pull worker\n", commands)
+        self.assertIn("改用本地基础镜像缓存", result.stdout)
+
+    def test_registry_and_cache_failure_falls_back_to_domestic_images(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_REGISTRY_AND_CACHE_UNAVAILABLE"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            image_environments = (project / "docker-images.log").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(commands.count(" build --pull api\n"), 2)
+        self.assertEqual(commands.count(" build api\n"), 1)
+        self.assertIn("build --pull worker", commands)
+        self.assertIn("build --pull frontend", commands)
+        self.assertIn("是否切换到国内镜像", result.stdout)
+        self.assertIn("已切换到国内基础镜像源", result.stdout)
+        self.assertIn(
+            "m.daocloud.io/docker.io/library/python:3.11-slim"
+            "|m.daocloud.io/docker.io/library/node:22-alpine"
+            "|m.daocloud.io/docker.io/library/nginx:1.27-alpine"
+            "|m.daocloud.io/docker.io/library/postgres:16-alpine",
+            image_environments,
+        )
+
+    def test_postgres_pull_failure_falls_back_to_domestic_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            prepare_fake_project(project)
+            env = fake_docker_environment(project, volume_exists=False)
+            env["FAKE_POSTGRES_REGISTRY_UNAVAILABLE"] = "true"
+
+            result = subprocess.run(
+                [str(SCRIPT), "--yes", "--no-pull"],
+                cwd=project,
+                env=env,
+                text=True,
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+            commands = (project / "docker-commands.log").read_text(encoding="utf-8")
+            image_environments = (project / "docker-images.log").read_text(
+                encoding="utf-8"
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(commands.count(" up -d postgres\n"), 2)
+        self.assertIn("已切换到国内基础镜像源", result.stdout)
+        self.assertIn(
+            "m.daocloud.io/docker.io/library/postgres:16-alpine",
+            image_environments,
+        )
+
+    def test_domestic_mirror_prefix_can_be_overridden(self):
+        command = """
+            source "$1"
+            ASSUME_YES=true
+            DOCKER_MIRROR_PREFIX=mirror.example.com/docker.io
+            enable_domestic_image_source
+            printf '%s|%s|%s|%s' \
+                "$PYTHON_BASE_IMAGE" "$NODE_BASE_IMAGE" \
+                "$NGINX_BASE_IMAGE" "$POSTGRES_BASE_IMAGE"
+        """
+
+        result = run_bash(command, SCRIPT)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "mirror.example.com/docker.io/library/python:3.11-slim"
+            "|mirror.example.com/docker.io/library/node:22-alpine"
+            "|mirror.example.com/docker.io/library/nginx:1.27-alpine"
+            "|mirror.example.com/docker.io/library/postgres:16-alpine",
+            result.stdout,
+        )
 
     def test_detects_first_install_configured_install_update_and_orphaned_volume(self):
         with tempfile.TemporaryDirectory() as directory:

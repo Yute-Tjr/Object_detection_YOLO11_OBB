@@ -2,7 +2,7 @@ name: terminal-inspection
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: ${POSTGRES_BASE_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     command: ["postgres", "-c", "timezone=Asia/Shanghai"]
     environment:
@@ -24,6 +24,8 @@ services:
     build:
       context: .
       dockerfile: deploy/api.Dockerfile
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
     restart: unless-stopped
     command: ["sh", "-c", "alembic upgrade head && python scripts/run_terminal_api.py --host 0.0.0.0 --port 8000"]
     environment: &terminal-environment
@@ -54,6 +56,8 @@ services:
     build:
       context: .
       dockerfile: deploy/api.Dockerfile
+      args:
+        PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
     restart: unless-stopped
     command: ["python", "scripts/run_terminal_worker.py"]
     environment: *terminal-environment
@@ -68,6 +72,9 @@ services:
     build:
       context: .
       dockerfile: deploy/frontend.Dockerfile
+      args:
+        NODE_BASE_IMAGE: ${NODE_BASE_IMAGE:-node:22-alpine}
+        NGINX_BASE_IMAGE: ${NGINX_BASE_IMAGE:-nginx:1.27-alpine}
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-8080}:80"
