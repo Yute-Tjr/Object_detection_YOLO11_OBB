@@ -1,13 +1,20 @@
 ARG PYTHON_BASE_IMAGE=python:3.11-slim
 FROM ${PYTHON_BASE_IMAGE}
 
+ARG DEBIAN_MIRROR_URL=
+ARG DEBIAN_SECURITY_MIRROR_URL=
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-RUN apt-get update \
+RUN if [ -n "$DEBIAN_MIRROR_URL" ] && [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i "s|http://deb.debian.org/debian-security|$DEBIAN_SECURITY_MIRROR_URL|g; s|http://deb.debian.org/debian|$DEBIAN_MIRROR_URL|g" \
+            /etc/apt/sources.list.d/debian.sources; \
+    fi \
+    && apt-get update \
     && apt-get install --no-install-recommends -y libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 

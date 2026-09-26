@@ -26,6 +26,8 @@ services:
       dockerfile: deploy/api.Dockerfile
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+        DEBIAN_MIRROR_URL: ${DEBIAN_MIRROR_URL:-}
+        DEBIAN_SECURITY_MIRROR_URL: ${DEBIAN_SECURITY_MIRROR_URL:-}
     restart: unless-stopped
     command: ["sh", "-c", "alembic upgrade head && python scripts/run_terminal_api.py --host 0.0.0.0 --port 8000"]
     environment: &terminal-environment
@@ -60,6 +62,8 @@ services:
       dockerfile: deploy/worker.Dockerfile
       args:
         PYTHON_BASE_IMAGE: ${PYTHON_BASE_IMAGE:-python:3.11-slim}
+        DEBIAN_MIRROR_URL: ${DEBIAN_MIRROR_URL:-}
+        DEBIAN_SECURITY_MIRROR_URL: ${DEBIAN_SECURITY_MIRROR_URL:-}
         PYTORCH_INDEX_URL: ${PYTORCH_INDEX_URL:-}
     restart: unless-stopped
     command: ["python", "scripts/run_terminal_worker.py"]

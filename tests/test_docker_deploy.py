@@ -13,6 +13,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "deploy.sh"
 NGINX_CONFIG = ROOT / "deploy" / "nginx.conf"
+API_DOCKERFILE = ROOT / "deploy" / "api.Dockerfile"
+WORKER_DOCKERFILE = ROOT / "deploy" / "worker.Dockerfile"
 
 
 def terminal_display_width(text: str) -> int:
@@ -500,6 +502,41 @@ class DockerDeployScriptTest(unittest.TestCase):
             "|mirror.example.com/docker.io/library/postgres:16-alpine",
             result.stdout,
         )
+
+    def test_domestic_fallback_also_switches_debian_package_sources(self):
+        command = """
+            source "$1"
+            ASSUME_YES=true
+            enable_domestic_image_source
+            printf '%s|%s' "$DEBIAN_MIRROR_URL" "$DEBIAN_SECURITY_MIRROR_URL"
+        """
+
+        result = run_bash(command, SCRIPT)
+        compose = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            "https://mirrors.aliyun.com/debian"
+            "|https://mirrors.aliyun.com/debian-security",
+            result.stdout,
+        )
+        for service in ("api", "worker"):
+            with self.subTest(service=service):
+                build_args = compose["services"][service]["build"]["args"]
+                self.assertEqual(
+                    build_args["DEBIAN_MIRROR_URL"],
+                    "${DEBIAN_MIRROR_URL:-}",
+                )
+                self.assertEqual(
+                    build_args["DEBIAN_SECURITY_MIRROR_URL"],
+                    "${DEBIAN_SECURITY_MIRROR_URL:-}",
+                )
+        for dockerfile in (API_DOCKERFILE, WORKER_DOCKERFILE):
+            with self.subTest(dockerfile=dockerfile.name):
+                contents = dockerfile.read_text(encoding="utf-8")
+                self.assertIn("ARG DEBIAN_MIRROR_URL=", contents)
+                self.assertIn("ARG DEBIAN_SECURITY_MIRROR_URL=", contents)
+                self.assertIn("/etc/apt/sources.list.d/debian.sources", contents)
 
     def test_detects_first_install_configured_install_update_and_orphaned_volume(self):
         with tempfile.TemporaryDirectory() as directory:
